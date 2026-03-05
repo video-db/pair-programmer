@@ -1,329 +1,494 @@
 #!/usr/bin/env electron
+/**
+ * VideoDB Pair Programmer - Simplified Recorder
+ * 
+ * Single sequential script that:
+ * 1. Loads .env from user's project directory
+ * 2. Connects to VideoDB, starts WebSocket
+ * 3. Shows picker UI for channel selection
+ * 4. Starts capture recording
+ * 5. Logs all events to /tmp/videodb_pp_events.jsonl
+ * 6. Shows tray icon with Stop/Quit buttons
+ */
+
 const path = require("path");
 const fs = require("fs");
+const { app, Notification, BrowserWindow, screen, ipcMain, Tray, Menu, nativeImage } = require("electron");
 
-const {
-  app,
-  Notification,
-  globalShortcut,
-  ipcMain,
-} = require("electron");
-const http = require("http");
-const net = require("net");
-const { spawn, execSync } = require("child_process");
+// Load environment from user's project directory
+require("dotenv").config();
+
+// Reduce Electron memory footprint
+app.commandLine.appendSwitch("disable-gpu");
+app.commandLine.appendSwitch("disable-software-rasterizer");
+app.commandLine.appendSwitch("disable-dev-shm-usage");
+app.commandLine.appendSwitch("js-flags", "--max-old-space-size=64");
+
 const { connect } = require("videodb");
 const { CaptureClient } = require("videodb/capture");
-
-const RecordingState = require("./lib/recording-state");
-const ContextBufferManager = require("./lib/context-buffer");
-const OverlayManager = require("./lib/overlay-manager");
-const TrayManager = require("./lib/tray-manager");
-const PickerManager = require("./lib/picker-manager");
-const {
-  channelIdToDisplayName,
-  rtstreamNameToDisplayName,
-  buildChannelsFromPicker,
-  getIndexingConfig,
-} = require("./lib/utils");
 
 // =============================================================================
 // Configuration
 // =============================================================================
 
-// Config lives in ~/.config/videodb/ so it persists across plugin updates
-const CONFIG_DIR = path.join(process.env.HOME || process.env.USERPROFILE || "/tmp", ".config", "videodb");
-const CONFIG_FILE_PATH = process.env.CONFIG_PATH || path.join(CONFIG_DIR, "config.json");
+const API_KEY = process.env.VIDEO_DB_API_KEY;
+const BASE_URL = process.env.VIDEO_DB_BASE_URL || "https://api.videodb.io";
 
-function loadConfig() {
-  try {
-    return JSON.parse(fs.readFileSync(CONFIG_FILE_PATH, "utf8"));
-  } catch (e) {
-    console.warn("No config.json found at", CONFIG_FILE_PATH, "- using defaults");
-    return {};
-  }
-}
+const PID_FILE = "/tmp/videodb_pp_pid";
+const EVENTS_FILE = "/tmp/videodb_pp_events.jsonl";
+const INFO_FILE = "/tmp/videodb_pp_info.json";
 
-const config = loadConfig();
-const API_KEY = config.videodb_api_key || process.env.VIDEO_DB_API_KEY;
-const BASE_URL = config.videodb_backend_url || "https://api.videodb.io";
-const API_PORT = config.recorder_port || process.env.RECORDER_PORT || 8899;
-const HOOK_SOCKET_PATH = "/tmp/videodb-hook.sock";
-
-// Indexing configuration from config file
-// model_name per channel: valid options are mini, basic, pro, ultra
-const INDEXING_CONFIG = {
-  visual: config.visual_index || {},
-  system_audio: config.system_audio_index || {},
-  mic: config.mic_index || {},
-};
-
-// Claude CLI configuration: plugin defaults ← user overrides (config.claude section)
-function loadClaudeConfig() {
-  var defaults;
-  try {
-    defaults = JSON.parse(fs.readFileSync(path.join(__dirname, "claude.config.json"), "utf8"));
-  } catch (e) {
-    defaults = {};
-  }
-  var user = config.claude || {};
-  return {
-    agent: user.agent || defaults.agent || "pair-programmer:cortex",
-    maxTurns: user.max_turns || defaults.max_turns || 50,
-    allowedTools: user.allowed_tools || defaults.allowed_tools || ["Read", "Write", "Task"],
-    dangerouslySkipPermissions: user.dangerously_skip_permissions !== undefined
-      ? user.dangerously_skip_permissions
-      : defaults.dangerously_skip_permissions !== undefined
-        ? defaults.dangerously_skip_permissions
-        : true,
-    defaultModel: user.default_model || defaults.default_model || "sonnet",
-  };
-}
-const CLAUDE_CONFIG = loadClaudeConfig();
-
-// Project root from env (set by hook scripts), fallback to cwd
-const PROJECT_ROOT = process.env.PROJECT_DIR || process.cwd();
 const UI_DIR = path.join(__dirname, "ui");
 
-
-// =============================================================================
-// Module State
-// =============================================================================
-
-const recordingState = new RecordingState();
-
-const defaultBufferSize = config.context_buffer_size || 50;
-const contextBuffer = new ContextBufferManager(recordingState, {
-  bufferSizes: {
-    screen: config.context_buffer_size_screen ?? defaultBufferSize,
-    mic: config.context_buffer_size_mic ?? defaultBufferSize,
-    system_audio: config.context_buffer_size_system_audio ?? defaultBufferSize,
+// Default indexing config
+const INDEXING_CONFIG = {
+  visual: {
+    enabled: true,
+    prompt: "Describe what is visible on the screen, focusing on the main application, content being viewed, and any notable UI elements.",
+    batch_time: 2,
+    frame_count: 3,
+    model_name: "mini",
   },
-});
+  system_audio: {
+    enabled: true,
+    prompt: "Summarize what is being said in the audio.",
+    batch_type: "sentence",
+    batch_value: 3,
+    model_name: "mini",
+  },
+  mic: {
+    enabled: true,
+    prompt: "Transcribe the user's speech.",
+    batch_type: "sentence",
+    batch_value: 3,
+    model_name: "mini",
+  },
+};
 
-let apiHttpServer = null;
-let overlayManager = null;
-let trayManager = null;
-let pickerManager = null;
+// =============================================================================
+// State
+// =============================================================================
 
-// VideoDB SDK instances
 let conn = null;
+let wsConnection = null;
 let captureSession = null;
 let captureClient = null;
-let wsConnection = null;
-
-// Runtime indexing config (overrides defaults from INDEXING_CONFIG)
-let runtimeIndexingConfig = null;
-
-// Active claude child process (cortex agent) — tracked so we can kill on cancel/shutdown
-let claudeProcess = null;
-let claudeSessionId = null;
-let hookSocketServer = null;
-
-// Saved recording config — used to restart recording after a claude session retry
-let lastRecordingChannels = null;
-let lastRecordingIndexingConfig = null;
-
-// Runtime model selection — mutable via overlay dropdown
-let runtimeModel = CLAUDE_CONFIG.defaultModel;
-
+let tray = null;
+let pickerWindow = null;
+let widgetWindow = null;
+let lastPickerConfig = null;
 
 // =============================================================================
-// VideoDB SDK Integration
+// File Helpers
+// =============================================================================
+
+function writePidFile() {
+  fs.writeFileSync(PID_FILE, String(process.pid));
+  console.log(`✓ PID file written: ${PID_FILE}`);
+}
+
+function removePidFile() {
+  try {
+    fs.unlinkSync(PID_FILE);
+  } catch (_) {}
+}
+
+function appendEvent(event) {
+  const ts = new Date().toISOString();
+  const unix_ts = Date.now() / 1000;
+  const line = JSON.stringify({ ts, unix_ts, ...event }) + "\n";
+  fs.appendFileSync(EVENTS_FILE, line);
+}
+
+function writeSessionInfo(info) {
+  fs.writeFileSync(INFO_FILE, JSON.stringify(info, null, 2));
+  console.log(`✓ Session info written: ${INFO_FILE}`);
+}
+
+function clearEventsFile() {
+  try {
+    fs.writeFileSync(EVENTS_FILE, "");
+  } catch (_) {}
+}
+
+// =============================================================================
+// Utility Functions (inlined from utils.js)
+// =============================================================================
+
+function matchDisplayToChannel(displayLabel, videoChannels) {
+  if (!displayLabel || !Array.isArray(videoChannels) || videoChannels.length === 0)
+    return null;
+  const normalized = (s) => String(s || "").trim().toLowerCase();
+  const label = normalized(displayLabel);
+  const found = videoChannels.find(
+    (c) => normalized(c.name) === label || normalized(c.extras?.name) === label
+  );
+  return found ? found.id : null;
+}
+
+function buildChannelsFromPicker(pickerResult) {
+  const channels = [];
+  if (pickerResult.mic) {
+    channels.push({ channelId: "mic:default", type: "audio", record: true, store: true });
+  }
+  if (pickerResult.systemAudio) {
+    channels.push({ channelId: "system_audio:default", type: "audio", record: true, store: true });
+  }
+  channels.push({ channelId: pickerResult.displayChannelId, type: "video", record: true, store: true });
+  return channels;
+}
+
+// =============================================================================
+// Tray (simple - just Stop/Quit while recording)
+// =============================================================================
+
+function createTray() {
+  const emptyIcon = nativeImage.createEmpty();
+  tray = new Tray(emptyIcon);
+  tray.setTitle(" 🔴 PP");
+  tray.setToolTip("VideoDB Pair Programmer - Recording");
+  updateTrayMenu();
+  tray.on("click", () => tray.popUpContextMenu());
+}
+
+function updateTrayMenu() {
+  if (!tray) return;
+  
+  const isOverlayVisible = widgetWindow && !widgetWindow.isDestroyed();
+  
+  const menu = Menu.buildFromTemplate([
+    { label: "🔴 Recording", enabled: false },
+    { type: "separator" },
+    { 
+      label: isOverlayVisible ? "Hide Overlay" : "Show Overlay", 
+      click: () => toggleOverlay() 
+    },
+    { type: "separator" },
+    { label: "Stop Recording", click: () => stopAndExit() },
+    { type: "separator" },
+    { label: "Quit", click: () => exitGracefully("Quit from tray") },
+  ]);
+  
+  tray.setContextMenu(menu);
+}
+
+function toggleOverlay() {
+  if (widgetWindow && !widgetWindow.isDestroyed()) {
+    widgetWindow.close();
+    widgetWindow = null;
+  } else if (lastPickerConfig) {
+    createWidget(lastPickerConfig);
+  }
+  updateTrayMenu();
+}
+
+// =============================================================================
+// Picker UI
+// =============================================================================
+
+function showPicker(videoChannels = []) {
+  return new Promise((resolve) => {
+    if (pickerWindow) {
+      pickerWindow.focus();
+      return resolve(null);
+    }
+
+    const displays = screen.getAllDisplays().map((d) => {
+      const label = d.label || `Display ${d.id}`;
+      const channelId = matchDisplayToChannel(label, videoChannels);
+      return {
+        width: d.size.width,
+        height: d.size.height,
+        id: d.id,
+        label,
+        channelId: channelId || `display:${d.id}`,
+      };
+    });
+
+    pickerWindow = new BrowserWindow({
+      width: 420,
+      height: 520,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      alwaysOnTop: true,
+      frame: false,
+      transparent: false,
+      backgroundColor: "#1c1c1e",
+      show: false,
+      skipTaskbar: false,
+      focusable: true,
+      webPreferences: {
+        nodeIntegration: true,
+        contextIsolation: false,
+      },
+    });
+
+    pickerWindow.loadFile(path.join(UI_DIR, "picker.html"));
+
+    pickerWindow.webContents.on("did-finish-load", () => {
+      pickerWindow.webContents.send("displays", displays);
+      pickerWindow.show();
+      pickerWindow.focus();
+      if (process.platform === "darwin") {
+        app.focus({ steal: true });
+      }
+    });
+
+    ipcMain.once("picker-result", (event, result) => {
+      if (pickerWindow) {
+        pickerWindow.close();
+        pickerWindow = null;
+      }
+      resolve(result);
+    });
+
+    pickerWindow.on("closed", () => {
+      pickerWindow = null;
+      resolve(null);
+    });
+  });
+}
+
+// =============================================================================
+// Widget (floating overlay showing recording status)
+// =============================================================================
+
+function createWidget(pickerConfig = null) {
+  if (widgetWindow) return;
+
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width: screenW, height: screenH } = primaryDisplay.workAreaSize;
+
+  widgetWindow = new BrowserWindow({
+    width: 160,
+    height: 150,
+    x: screenW - 180,
+    y: screenH - 200,
+    frame: false,
+    transparent: true,
+    hasShadow: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    closable: true,
+    focusable: false,
+    visibleOnAllWorkspaces: true,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+    },
+  });
+
+  widgetWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  widgetWindow.loadFile(path.join(UI_DIR, "widget.html"));
+
+  widgetWindow.webContents.on("did-finish-load", () => {
+    if (pickerConfig) {
+      widgetWindow.webContents.send("widget-config", pickerConfig);
+    }
+  });
+
+  ipcMain.on("widget-stop", () => {
+    stopAndExit();
+  });
+
+  ipcMain.on("widget-close", () => {
+    if (widgetWindow && !widgetWindow.isDestroyed()) {
+      widgetWindow.close();
+      widgetWindow = null;
+      updateTrayMenu();
+    }
+  });
+
+  ipcMain.on("widget-resize", (_, size) => {
+    if (widgetWindow && size.width && size.height) {
+      widgetWindow.setSize(size.width, size.height);
+    }
+  });
+
+  widgetWindow.on("closed", () => {
+    widgetWindow = null;
+  });
+
+  console.log("✓ Widget created");
+}
+
+function updateWidgetState(state) {
+  if (widgetWindow && !widgetWindow.isDestroyed()) {
+    widgetWindow.webContents.send("widget-state", state);
+  }
+}
+
+function updateWidgetConfig(config) {
+  if (widgetWindow && !widgetWindow.isDestroyed()) {
+    widgetWindow.webContents.send("widget-config", config);
+  }
+}
+
+// =============================================================================
+// VideoDB Integration
 // =============================================================================
 
 async function initializeVideoDB() {
   if (!API_KEY) {
-    console.error("No API key configured. Run /pair-programmer:setup to set up.");
-    return false;
+    throw new Error("VIDEO_DB_API_KEY not found in .env file");
   }
 
-  try {
-    conn = connect({ apiKey: API_KEY, baseUrl: BASE_URL });
-    console.log("✓ Connected to VideoDB");
-    return true;
-  } catch (e) {
-    console.error("Failed to connect to VideoDB:", e.message);
-    return false;
-  }
+  conn = connect({ apiKey: API_KEY, baseUrl: BASE_URL });
+  console.log("✓ Connected to VideoDB");
+  return true;
+}
+
+async function setupWebSocket() {
+  wsConnection = await conn.connectWebsocket();
+  await wsConnection.connect();
+  console.log(`✓ WebSocket connected: ${wsConnection.connectionId}`);
+  
+  // Start listening for events in background
+  listenToWebSocketEvents();
 }
 
 async function createSession() {
-  if (!conn) {
-    throw new Error("Not connected to VideoDB");
-  }
-
-  // Establish WebSocket — reconnect if stale (API Gateway drops idle connections after ~10min)
-  if (!wsConnection || !wsConnection.isConnected) {
-    if (wsConnection) {
-      try { await wsConnection.close(); } catch (_) {}
-      wsConnection = null;
-    }
-    wsConnection = await conn.connectWebsocket();
-    await wsConnection.connect();
-    console.log(`✓ WebSocket connected: ${wsConnection.connectionId}`);
-    listenToWebSocketEvents();
-  }
-
   const sessionConfig = {
-    endUserId: "electron_user",
-    metadata: { app: "vdb-recorder-demo" },
+    endUserId: "pair_programmer_user",
+    metadata: { app: "pair-programmer" },
     wsConnectionId: wsConnection.connectionId,
   };
 
   captureSession = await conn.createCaptureSession(sessionConfig);
-
-  // Generate client token
-  const token = await conn.generateClientToken(3600); // 1 hour
-  // Create capture client with token and base URL
+  const token = await conn.generateClientToken(3600);
   captureClient = new CaptureClient({ sessionToken: token, apiUrl: BASE_URL });
 
   console.log(`✓ Session created: ${captureSession.id}`);
   return { sessionId: captureSession.id, token };
 }
 
-async function startIndexingForRTStreams(rtstreams) {
+async function requestPermissions() {
+  if (!captureClient) return;
+  
   try {
-    if (!rtstreams || rtstreams.length === 0) {
-      console.error("[Indexing] No RTStreams provided!");
+    const { systemPreferences } = require("electron");
+    const hasScreen = systemPreferences.getMediaAccessStatus("screen") === "granted";
+    const hasMic = systemPreferences.getMediaAccessStatus("microphone") === "granted";
+
+    if (hasScreen && hasMic) {
+      console.log("✓ Permissions already granted");
       return;
     }
 
-    if (!wsConnection) {
-      console.error("[Indexing] WebSocket not connected, cannot start indexing");
-      return;
-    }
-
-    const coll = await conn.getCollection();
-    const indexingConfig = getIndexingConfig(INDEXING_CONFIG, runtimeIndexingConfig);
-
-    for (const stream of rtstreams) {
-      const rtstream_id = stream.rtstream_id || stream.id;
-      const name = stream.name || stream.channel_id || "";
-      const mediaTypes = stream.media_types || [];
-
-      if (!rtstream_id) {
-        console.log("[Indexing] Skipping stream with no ID:", stream);
-        continue;
-      }
-
-      const rtstreamEntry = (recordingState.rtstreams || []).find(
-        (r) => r.rtstream_id === rtstream_id
-      );
-
-      try {
-        const rtstream = await coll.getRTStream(rtstream_id);
-
-        if (mediaTypes.includes("video")) {
-          if (!indexingConfig.visual.enabled) {
-            console.log(`[Indexing] Visual indexing disabled, skipping ${name}`);
-            continue;
-          }
-          
-          const visualOpts = {
-            prompt: indexingConfig.visual.prompt,
-            batchConfig: { 
-              type: "time", 
-              value: indexingConfig.visual.batch_time, 
-              frameCount: indexingConfig.visual.frame_count 
-            },
-            modelName: indexingConfig.visual.model_name || "mini",
-            socketId: wsConnection.connectionId,
-          };
-          const sceneIndex = await rtstream.indexVisuals(visualOpts);
-          if (sceneIndex && rtstreamEntry) {
-            rtstreamEntry.scene_index_id = sceneIndex.rtstreamIndexId;
-            rtstreamEntry.index_type = "screen";
-          }
-          if (sceneIndex) {
-            console.log(`✓ Visual index created for ${name} (index: ${sceneIndex.rtstreamIndexId})`);
-          }
-        } else if (mediaTypes.includes("audio")) {
-          const isMic = name.toLowerCase().includes("mic");
-          const streamConfig = isMic ? indexingConfig.mic : indexingConfig.system_audio;
-          const indexType = isMic ? "mic" : "system_audio";
-          
-          if (!streamConfig.enabled) {
-            console.log(`[Indexing] ${indexType} indexing disabled, skipping ${name}`);
-            continue;
-          }
-          
-          const audioOpts = {
-            prompt: streamConfig.prompt,
-            batchConfig: { 
-              type: streamConfig.batch_type, 
-              value: streamConfig.batch_value 
-            },
-            modelName: streamConfig.model_name || "mini",
-            socketId: wsConnection.connectionId,
-          };
-          const audioIndex = await rtstream.indexAudio(audioOpts);
-          if (audioIndex && rtstreamEntry) {
-            rtstreamEntry.scene_index_id = audioIndex.rtstreamIndexId;
-            rtstreamEntry.index_type = indexType;
-          }
-          if (audioIndex) {
-            console.log(`✓ ${indexType} index created for ${name} (index: ${audioIndex.rtstreamIndexId})`);
-          }
-        } else {
-          console.log(`[Indexing] Unknown media types for ${name}:`, mediaTypes);
-        }
-      } catch (e) {
-        console.error(`[Indexing] Failed to start indexing for ${rtstream_id}:`, e.message);
-      }
-    }
+    if (!hasScreen) await captureClient.requestPermission("screen-capture");
+    if (!hasMic) await captureClient.requestPermission("microphone");
+    console.log("✓ Permissions requested");
   } catch (e) {
-    console.error("[Indexing] Failed to start indexing:", e.message, e.stack);
+    console.warn("Permission request failed:", e.message);
+  }
+}
+
+async function startRecording(channels) {
+  const capturePayload = {
+    sessionId: captureSession.id,
+    channels,
+  };
+  console.log("Starting capture with channels:", channels.map(c => c.channelId).join(", "));
+  
+  await captureClient.startSession(capturePayload);
+}
+
+async function startIndexingForRTStreams(rtstreams) {
+  if (!rtstreams || rtstreams.length === 0) {
+    console.error("[Indexing] No RTStreams provided!");
+    return;
+  }
+
+  const coll = await conn.getCollection();
+
+  for (const stream of rtstreams) {
+    const rtstream_id = stream.rtstream_id || stream.id;
+    const name = stream.name || stream.channel_id || "";
+    const mediaTypes = stream.media_types || [];
+
+    if (!rtstream_id) continue;
+
+    try {
+      const rtstream = await coll.getRTStream(rtstream_id);
+
+      if (mediaTypes.includes("video")) {
+        if (!INDEXING_CONFIG.visual.enabled) continue;
+        
+        const visualOpts = {
+          prompt: INDEXING_CONFIG.visual.prompt,
+          batchConfig: { 
+            type: "time", 
+            value: INDEXING_CONFIG.visual.batch_time, 
+            frameCount: INDEXING_CONFIG.visual.frame_count 
+          },
+          modelName: INDEXING_CONFIG.visual.model_name,
+          socketId: wsConnection.connectionId,
+        };
+        const sceneIndex = await rtstream.indexVisuals(visualOpts);
+        if (sceneIndex) {
+          console.log(`✓ Visual index created for ${name}`);
+        }
+      } else if (mediaTypes.includes("audio")) {
+        const isMic = name.toLowerCase().includes("mic");
+        const config = isMic ? INDEXING_CONFIG.mic : INDEXING_CONFIG.system_audio;
+        
+        if (!config.enabled) continue;
+        
+        const audioOpts = {
+          prompt: config.prompt,
+          batchConfig: { type: config.batch_type, value: config.batch_value },
+          modelName: config.model_name,
+          socketId: wsConnection.connectionId,
+        };
+        const audioIndex = await rtstream.indexAudio(audioOpts);
+        if (audioIndex) {
+          console.log(`✓ Audio index created for ${name}`);
+        }
+      }
+    } catch (e) {
+      console.error(`[Indexing] Failed for ${rtstream_id}:`, e.message);
+    }
   }
 }
 
 async function listenToWebSocketEvents() {
-  console.log("Started listening to websocket")
   if (!wsConnection) return;
 
   try {
     for await (const ev of wsConnection.receive()) {
       const channel = ev.channel;
 
+      // Append all events to file
+      appendEvent(ev);
+
       if (channel === "capture_session") {
-        handleCaptureSessionEvent(ev).catch((e) => {
-          console.error("[WS] Error processing capture_session event:", e.message);
-        });
+        await handleCaptureSessionEvent(ev);
       } else if (channel === "transcript") {
         const text = ev.data?.text;
-        const transcriptType = (ev.rtstream_name || "").includes("system")
-          ? "system_audio"
-          : "mic";
-        const rawFinal = ev.data?.is_final;
-        const isFinal = rawFinal === true || rawFinal === "true";
-        contextBuffer.add(transcriptType, {
-          text: text,
-          isFinal,
-        });
+        if (text) {
+          console.log(`[Transcript] ${text.substring(0, 80)}...`);
+        }
       } else if (channel === "visual_index") {
         const text = ev.data?.text;
-        contextBuffer.add("screen", {
-          text: text,
-          start: ev.data?.start,
-        });
-        const startTs = ev.data?.start;
-        if (startTs) {
-          const startMs = startTs > 1e12 ? startTs : startTs * 1000;
-          recordingState.setVisualLatency(Math.max(0, Date.now() - startMs));
+        if (text) {
+          console.log(`[Visual] ${text.substring(0, 80)}...`);
         }
       } else if (channel === "audio_index") {
         const text = ev.data?.text;
-        const type = (ev.rtstream_name || "").includes("system")
-          ? "system_audio"
-          : "mic";
-        contextBuffer.add(type, { text: text, start: ev.data?.start });
+        if (text) {
+          console.log(`[Audio] ${text.substring(0, 80)}...`);
+        }
       }
     }
   } catch (e) {
     console.warn("[WS] Listener error:", e.message);
   }
 
-  // WS disconnected — clear reference so createSession() reconnects
-  console.log("[WS] Connection closed, will reconnect on next session");
+  console.log("[WS] Connection closed");
   wsConnection = null;
 }
 
@@ -331,862 +496,110 @@ async function handleCaptureSessionEvent(ev) {
   const eventType = ev.event || ev.type;
   const sessionId = ev.capture_session_id || ev.session_id;
 
-  console.log(`[WS] Capture event: ${eventType} for session: ${sessionId}`);
+  console.log(`[WS] Capture event: ${eventType}`);
 
   if (eventType === "capture_session.active") {
     console.log("[WS] Session is ACTIVE!");
 
+    // Update widget to recording state
+    updateWidgetState("recording");
+
     const data = ev.data || {};
     const rtstreams = data.rtstreams || data.streams || data.channels || [];
-    if (rtstreams.length === 0 && data && typeof data === "object") {
-      console.log("[WS] No rtstreams in data. Keys received:", Object.keys(data));
-    }
-    console.log(`[WS] Found ${rtstreams.length} RTStreams in payload`);
-
-    const isOurSession = captureSession && captureSession.id === sessionId;
-
-    if (isOurSession) {
-      const normalized = (rtstreams || []).map((r) => ({
+    
+    // Write session info
+    writeSessionInfo({
+      session_id: sessionId,
+      rtstreams: rtstreams.map(r => ({
         rtstream_id: r.rtstream_id,
         name: r.name,
-      }));
-      if (!recordingState.active) {
-        const channelNames = rtstreams.map((r) =>
-          rtstreamNameToDisplayName(r.name || r.channel_id)
-        );
-        recordingState.markActive(sessionId, [...new Set(channelNames)], normalized);
-      } else {
-        recordingState.setRtstreams(normalized);
-      }
-      await startIndexingForRTStreams(rtstreams);
-    } else {
-      console.log(`[WS] Not our session (expected: ${captureSession?.id}, got: ${sessionId}), skipping`);
-    }
-  } else if (eventType === "capture_session.stopped") {
-    console.log("[WS] Session stopped");
-    recordingState.markStopped();
-  } else if (eventType === "capture_session.created") {
-    console.log("[WS] Session created");
-  } else if (eventType === "capture_session.starting") {
-    console.log("[WS] Session starting");
-    recordingState.markStarting();
-  } else if (eventType === "capture_session.stopping") {
-    console.log("[WS] Session stopping");
-    recordingState.markStopping();
+        media_types: r.media_types,
+      })),
+      started_at: new Date().toISOString(),
+    });
+
+    // Start indexing
+    await startIndexingForRTStreams(rtstreams);
+    
   } else if (eventType === "capture_session.exported") {
     const exportedId = ev.data?.exported_video_id;
     const playerUrl = ev.data?.player_url;
-    console.log("[WS] Session exported", exportedId ? `video_id: ${exportedId}` : "", playerUrl ? `player: ${playerUrl}` : "");
-    recordingState.markExported(exportedId, playerUrl);
+    console.log("[WS] Session exported", exportedId ? `video_id: ${exportedId}` : "");
+    
+    new Notification({
+      title: "VideoDB Recording Complete",
+      body: playerUrl ? "Click to view recording" : "Recording saved",
+    }).show();
+    
   } else if (eventType === "capture_session.failed") {
     const err = ev.data?.error || ev.data || {};
     console.error("[WS] Session failed:", err);
-    const message = err.message || "Recording failed";
-    recordingState.markFailed(err.code || "RECORDING_FAILED", message);
+    
     new Notification({
       title: "VideoDB Recording Failed",
-      body: `${message}. Run /record again in Claude to start a new recording.`,
-    }).show();
-  } else {
-    console.log(`[WS] Unhandled capture event type: ${eventType}`);
-  }
-}
-
-// =============================================================================
-// Permissions
-// =============================================================================
-
-async function checkAndRequestPermissions() {
-  if (!captureClient) {
-    console.log("CaptureClient not available, skipping permission requests");
-    return;
-  }
-  try {
-    await captureClient.requestPermission("screen-capture");
-    await captureClient.requestPermission("microphone");
-    console.log("✓ Permissions requested via CaptureClient");
-  } catch (e) {
-    console.warn("Permission request failed:", e.message);
-  }
-}
-
-// =============================================================================
-// Recording Control
-// =============================================================================
-
-async function startRecording(selectedChannels, indexingConfigOverride = null) {
-  if (recordingState.active) {
-    return { status: "error", error: "Already recording" };
-  }
-
-  // Store runtime indexing config override
-  runtimeIndexingConfig = indexingConfigOverride;
-  if (runtimeIndexingConfig) {
-    console.log("[Recording] Using runtime indexing config:", JSON.stringify(runtimeIndexingConfig, null, 2));
-  }
-
-  try {
-    // Create session if not exists, or recreate if WS dropped
-    if (!captureSession || !captureClient || !wsConnection || !wsConnection.isConnected) {
-      captureSession = null;
-      captureClient = null;
-      await createSession();
-    }
-
-    const availableChannels = await captureClient.listChannels();
-
-    // Use selected or default channels
-    let channels = selectedChannels;
-    if (!channels) {
-      const mic = availableChannels.mics.default;
-      const systemAudio = availableChannels.systemAudio.default;
-      const display = availableChannels.displays.default;
-
-      channels = [mic, systemAudio, display].filter(Boolean).map((c) => ({
-        channelId: c.id,
-        type: c.type,
-        record: true,
-        store: true,
-      }));
-    }
-
-    // Save config for potential restart after claude session retry
-    lastRecordingChannels = channels;
-    lastRecordingIndexingConfig = indexingConfigOverride;
-
-    recordingState.setChannels(channels.map((c) => channelIdToDisplayName(c.channelId)));
-
-    const capturePayload = {
-      sessionId: captureSession.id,
-      channels,
-    };
-    console.log("Starting capture with payload:", JSON.stringify(capturePayload, null, 2));
-
-    await captureClient.startSession(capturePayload);
-
-    return { status: "ok", sessionId: captureSession.id };
-  } catch (e) {
-    console.error("Start recording error:", e);
-    return { status: "error", error: e.message };
-  }
-}
-
-async function stopRecording() {
-  if (!recordingState.active || !captureClient) {
-    return { status: "error", error: "Not recording" };
-  }
-
-  try {
-    await captureClient.stopSession();
-
-    const duration = recordingState.duration;
-
-    // Clear runtime indexing config
-    runtimeIndexingConfig = null;
-
-    return { status: "ok", duration };
-  } catch (e) {
-    console.error("Stop recording error:", e);
-    return { status: "error", error: e.message };
-  }
-}
-
-
-// =============================================================================
-// HTTP API Route Handlers
-// =============================================================================
-
-function handleGetStatus() {
-  return {
-    status: "ok",
-    ...recordingState.toApiPayload(),
-    claudeSessionId,
-    claudeProcessPid: claudeProcess ? claudeProcess.pid : null,
-    bufferCounts: contextBuffer.getCounts(),
-  };
-}
-
-async function handleStartRecord(body) {
-  if (!body.channels) {
-    if (!captureSession || !captureClient) await createSession();
-    let videoChannels = [];
-    try {
-      const available = await captureClient.listChannels();
-      videoChannels = Array.from(available.displays || []);
-    } catch (e) {
-      console.warn("[API] listChannels failed, picker will use fallback:", e.message);
-    }
-    const pickerResult = await pickerManager.show(videoChannels);
-    if (!pickerResult) {
-      return { status: "cancelled", error: "User cancelled picker" };
-    }
-    return startRecording(buildChannelsFromPicker(pickerResult), body.indexing_config);
-  }
-  return startRecording(body.channels, body.indexing_config);
-}
-
-async function handleStopRecord() {
-  return stopRecording();
-}
-
-async function handleRTStreamSearch(body) {
-  const rtstreamId = body.rtstream_id || body.rtstreamId;
-  const query = body.query;
-  if (!rtstreamId || !query || typeof query !== "string") {
-    return { status: "error", error: "rtstream_id and query (string) required" };
-  }
-  if (!conn) {
-    return { status: "error", error: "Not connected to VideoDB" };
-  }
-  const coll = await conn.getCollection();
-  const rtstream = await coll.getRTStream(rtstreamId);
-  const searchResult = await rtstream.search({ query });
-  const serialized = searchResult?.shots != null
-    ? { shots: searchResult.shots }
-    : (searchResult && typeof searchResult === "object" ? { ...searchResult } : { data: searchResult });
-  return { status: "ok", ...serialized };
-}
-
-async function handleUpdatePrompt(body) {
-  const rtstreamId = body.rtstream_id || body.rtstreamId;
-  const sceneIndexId = body.scene_index_id || body.sceneIndexId;
-  const prompt = body.prompt;
-  if (!rtstreamId || !sceneIndexId || !prompt || typeof prompt !== "string") {
-    return { status: "error", error: "rtstream_id, scene_index_id, and prompt (string) required" };
-  }
-  if (!conn) {
-    return { status: "error", error: "Not connected to VideoDB" };
-  }
-  const coll = await conn.getCollection();
-  const rtstream = await coll.getRTStream(rtstreamId);
-  const sceneIndex = await rtstream.getSceneIndex(sceneIndexId);
-  await sceneIndex.updateSceneIndex(prompt);
-
-  const rtstreamEntry = (recordingState.rtstreams || []).find(
-    (r) => r.rtstream_id === rtstreamId && r.scene_index_id === sceneIndexId
-  );
-  const indexType = rtstreamEntry?.index_type;
-  const configKeyMap = { screen: "visual_index", mic: "mic_index", system_audio: "system_audio_index" };
-  const configKey = configKeyMap[indexType];
-  if (configKey) {
-    try {
-      const currentConfig = loadConfig();
-      if (!currentConfig[configKey]) currentConfig[configKey] = {};
-      currentConfig[configKey].prompt = prompt;
-      writeConfig(currentConfig);
-    } catch (e) {
-      console.error("[Update Prompt] Failed to update config:", e.message);
-    }
-  }
-  return { status: "ok", message: "Scene index prompt updated", index_type: indexType || "unknown" };
-}
-
-async function handlePermissionPrompt(body) {
-  const toolName = body.tool_name || "Unknown";
-  const toolInput = body.tool_input || {};
-  console.log(`[API] Permission prompt for tool: ${toolName}`);
-  const decision = await overlayManager.showPermissionPrompt({ toolName, toolInput });
-  console.log(`[API] Permission decision: ${decision}`);
-  return { status: "ok", decision };
-}
-
-function killClaudeProcess(reason) {
-  if (!claudeProcess) return false;
-  const pid = claudeProcess.pid;
-  console.log(`[Assistant] Killing claude process PID ${pid} (${reason})`);
-  try {
-    process.kill(pid, "SIGTERM");
-    // Give it 2s to exit gracefully, then force-kill
-    setTimeout(() => {
-      try { process.kill(pid, "SIGKILL"); } catch (_) {}
-    }, 2000);
-  } catch (_) {}
-  claudeProcess = null;
-  return true;
-}
-
-function handleShutdown() {
-  console.log("[API] Shutdown requested via /api/shutdown");
-  // Respond immediately, then trigger graceful shutdown async
-  setImmediate(() => exitGracefully("API /api/shutdown"));
-  return { status: "ok", message: "Shutdown initiated" };
-}
-
-// =============================================================================
-// HTTP API Server
-// =============================================================================
-
-function killProcessOnPort(port) {
-  if (process.platform === "win32") return;
-  try {
-    const out = execSync(`lsof -i :${port} -t 2>/dev/null`, { encoding: "utf8" });
-    const pids = out.trim().split(/\n/).filter(Boolean);
-    for (const pid of pids) {
-      try {
-        process.kill(parseInt(pid, 10), "SIGKILL");
-      } catch (_) {}
-    }
-    if (pids.length) console.log(`Killed previous process(es) on port ${port}: ${pids.join(", ")}`);
-  } catch (_) {}
-}
-
-function cleanupStaleBinary() {
-  const stalePath = path.join(__dirname, "videodb-recorder");
-  try {
-    if (fs.existsSync(stalePath)) {
-      fs.unlinkSync(stalePath);
-      console.log("✓ Removed stale videodb-recorder binary");
-    }
-  } catch (_) {}
-}
-
-function startAPIServer() {
-  killProcessOnPort(API_PORT);
-  cleanupStaleBinary();
-  contextBuffer.cleanup();
-  const server = http.createServer(async (req, res) => {
-    const url = req.url.split("?")[0];
-    
-    // Log all incoming requests
-    console.log(`[API] ${req.method} ${url}`);
-    
-    res.setHeader("Content-Type", "application/json");
-
-    // Parse body for POST requests
-    let body = "";
-    if (req.method === "POST") {
-      for await (const chunk of req) body += chunk;
-      try {
-        body = JSON.parse(body || "{}");
-      } catch {
-        body = {};
-      }
-    }
-
-    const routes = {
-      "GET /api/status": () => handleGetStatus(),
-      "POST /api/record/start": () => handleStartRecord(body),
-      "POST /api/record/stop": () => handleStopRecord(),
-      "POST /api/rtstream/search": () => handleRTStreamSearch(body),
-      "POST /api/rtstream/update-prompt": () => handleUpdatePrompt(body),
-      "POST /api/overlay/show": () => overlayManager.show(body.text, { loading: body.loading }),
-      "POST /api/overlay/hide": () => overlayManager.hide(),
-      "GET /api/claude-session": () => ({ status: "ok", claudeSessionId }),
-      "POST /api/permission-prompt": () => handlePermissionPrompt(body),
-      "POST /api/shutdown": () => handleShutdown(),
-    };
-
-    const routeKey = `${req.method} ${url}`;
-    const handler = routes[routeKey];
-
-    let result;
-    try {
-      if (handler) {
-        result = await handler();
-      } else if (url.startsWith("/api/context/")) {
-        const type = url.split("/").pop();
-        result = type === "all"
-          ? { status: "ok", ...contextBuffer.getAll() }
-          : { status: "ok", [type]: contextBuffer.getRecent(type, 20) };
-      } else {
-        result = { status: "error", error: "Unknown endpoint" };
-      }
-    } catch (e) {
-      result = { status: "error", error: e.message };
-    }
-
-    res.end(JSON.stringify(result));
-  });
-
-  server.listen(API_PORT, "127.0.0.1", () => {
-    console.log(`✓ API server running on http://localhost:${API_PORT}`);
-  });
-
-  server.on("error", (e) => {
-    if (e.code === "EADDRINUSE") {
-      console.warn(`Port ${API_PORT} in use, API server disabled`);
-    }
-  });
-
-  apiHttpServer = server;
-}
-
-// =============================================================================
-// Unix Socket Server (fast IPC for hooks)
-// =============================================================================
-
-const HOOK_LOG_PATH = "/tmp/videodb-hook.log";
-function hookLog(msg) {
-  try { fs.appendFileSync(HOOK_LOG_PATH, `[${new Date().toISOString()}] ${msg}\n`); } catch (_) {}
-}
-function toolDetail(name, input) {
-  try {
-    const i = typeof input === "string" ? JSON.parse(input) : input;
-    if (!i) return "";
-    if (name === "Task") {
-      const agent = (i.subagent_type || i.agent_type || "").split(":").pop();
-      const desc = i.description || "";
-      return agent ? ` → ${agent}${desc ? " (" + desc.substring(0, 40) + ")" : ""}` : "";
-    }
-    if (name === "Bash") {
-      const cmd = (i.command || "").substring(0, 60).replace(/\n/g, " ");
-      return cmd ? ` → ${cmd}` : "";
-    }
-    if (name === "Read" || name === "Write" || name === "Edit") return i.file_path ? ` → ${i.file_path}` : "";
-    if (name === "Grep") return i.pattern ? ` → ${i.pattern}` : "";
-    if (name === "Search") return i.query ? ` → "${i.query.substring(0, 40)}"` : "";
-    if (name.startsWith("mcp__")) {
-      const short = name.split("__").pop();
-      if (short === "show_overlay") return i.loading ? " → loading" : ` → ${(i.text || "").substring(0, 40)}`;
-      if (short === "get_status") return "";
-      if (short === "search_rtstream") return i.query ? ` → "${i.query.substring(0, 40)}"` : "";
-    }
-  } catch (_) {}
-  return "";
-}
-const KNOWN_AGENTS = new Set(["code-eye", "voice", "hearing", "narrator"]);
-function extractAgentType(input) {
-  try {
-    const i = typeof input === "string" ? JSON.parse(input) : input;
-    if (!i) return null;
-    // Check explicit fields first
-    for (const key of ["subagent_type", "agent_type"]) {
-      if (i[key]) {
-        const name = i[key].split(":").pop();
-        if (KNOWN_AGENTS.has(name)) return name;
-      }
-    }
-    // Scan description / prompt for known agent names
-    const text = ((i.description || "") + " " + (i.prompt || "")).toLowerCase();
-    for (const agent of KNOWN_AGENTS) {
-      if (text.includes(agent)) return agent;
-    }
-    return null;
-  } catch (_) { return null; }
-}
-
-function startHookSocket() {
-  try { fs.unlinkSync(HOOK_SOCKET_PATH); } catch (_) {}
-  try { fs.writeFileSync(HOOK_LOG_PATH, ""); } catch (_) {} // reset log on start
-
-  const server = net.createServer((conn) => {
-    let buf = "";
-    conn.on("data", (chunk) => { buf += chunk; });
-    conn.on("end", () => {
-      if (!buf.trim()) return;
-      try {
-        const data = JSON.parse(buf);
-        const event = data.hook_event_name || data.event;
-        if (!event) return;
-
-        // Only show events from our cortex session
-        const evtSession = data.session_id || data.sessionId;
-        if (evtSession) {
-          if (!claudeSessionId || evtSession !== claudeSessionId) {
-            hookLog(`DROP ${event} session=${(evtSession || "").substring(0, 8)}…`);
-            return;
-          }
-        } else if (claudeSessionId) {
-          // No session_id on event but we have an active session — drop it
-          hookLog(`DROP ${event} (no session_id, ignoring)`);
-          return;
-        }
-
-        // Build the overlay payload from raw hook data
-        const rawInput = data.tool_input || {};
-        let payload;
-        switch (event) {
-          case "PreToolUse":
-          case "PostToolUse":
-          case "PostToolUseFailure": {
-            let toolName = data.tool_name || "unknown";
-            let toolInput = rawInput;
-            const toolOutput = JSON.stringify(data.tool_output || "").substring(0, 500);
-
-            // Detect sub-agent Task calls → emit SubagentStart/SubagentStop
-            if (toolName === "Task") {
-              const agentType = extractAgentType(rawInput);
-              if (agentType) {
-                const subEvent = event === "PreToolUse" ? "SubagentStart" : "SubagentStop";
-                overlayManager.pushHookEvent({ event: subEvent, agent_type: agentType });
-                hookLog(`${subEvent} ${agentType}`);
-                break;
-              }
-            }
-
-            // Detect search curl commands and rewrite as a clean search event
-            if (toolName === "Bash" && typeof toolInput.command === "string" && toolInput.command.includes("rtstream/search")) {
-              toolName = "Search";
-              const qMatch = toolInput.command.match(/"query"\s*:\s*"([^"]+)"/);
-              toolInput = qMatch ? { query: qMatch[1] } : {};
-            }
-
-            payload = { event, tool_name: toolName, tool_input: JSON.stringify(toolInput).substring(0, 300), tool_output: toolOutput };
-            hookLog(`${event} ${toolName}${toolDetail(toolName, rawInput)}`);
-            break;
-          }
-          case "Stop":
-            payload = { event, stop_reason: data.stop_reason || "end_turn" };
-            hookLog(`Stop (${payload.stop_reason})`);
-            break;
-          default:
-            payload = { event };
-            hookLog(event);
-        }
-
-        if (payload) overlayManager.pushHookEvent(payload);
-      } catch (e) {
-        hookLog(`ERROR ${e.message}`);
-      }
-    });
-    conn.on("error", () => {});
-  });
-
-  server.listen(HOOK_SOCKET_PATH, () => {
-    try { fs.chmodSync(HOOK_SOCKET_PATH, 0o666); } catch (_) {}
-    console.log(`✓ Hook socket listening on ${HOOK_SOCKET_PATH}`);
-  });
-
-  server.on("error", (e) => {
-    console.warn(`[HookSocket] Failed to start: ${e.message}`);
-  });
-
-  hookSocketServer = server;
-}
-
-// =============================================================================
-// Assistant Shortcut
-// =============================================================================
-
-function registerAssistantShortcut() {
-  const shortcut = config.assistant_shortcut;
-  if (!shortcut) {
-    console.log("No assistant_shortcut configured, skipping");
-    return;
-  }
-
-  const registered = globalShortcut.register(shortcut, () => {
-    console.log(`[Assistant] Shortcut ${shortcut} triggered`);
-
-    if (!claudeSessionId) {
-      console.error("[Assistant] No claude session available");
-      overlayManager.show("**No Claude session available.**\n\nSession was not created during startup. Restart the recorder to try again.");
-      return;
-    }
-
-    overlayManager.show("", { loading: true });
-
-    const args = [];
-    if (process.env.PLUGIN_PATH) {
-      args.push("--plugin-dir", process.env.PLUGIN_PATH);
-    }
-
-    args.push("--agent", CLAUDE_CONFIG.agent);
-    args.push("--model", runtimeModel);
-    if (CLAUDE_CONFIG.dangerouslySkipPermissions) args.push("--dangerously-skip-permissions");
-    for (const tool of CLAUDE_CONFIG.allowedTools) args.push("--allowedTools", tool);
-    args.push("--max-turns", String(CLAUDE_CONFIG.maxTurns));
-
-    const triggerPrompt = `User triggered the assistant shortcut. recorder_port: ${API_PORT}`;
-    args.push("-r", claudeSessionId, "-p", triggerPrompt, "--output-format", "json");
-    console.log(`[Assistant] Resuming session: ${claudeSessionId}`);
-
-    // Kill any existing claude process before spawning a new one
-    killClaudeProcess("new shortcut activation");
-
-    console.log(`[Assistant] claude ${args.join(" ")}`);
-    let stdout = "";
-    const child = spawn("claude", args, {
-      cwd: PROJECT_ROOT,
-      stdio: ["inherit", "pipe", "inherit"],
-      shell: false,
-    });
-
-    claudeProcess = child;
-    console.log(`[Assistant] PID: ${child.pid}`);
-
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-
-    child.on("error", (err) => {
-      console.error("[Assistant] Failed to run claude:", err.message);
-      claudeProcess = null;
-      new Notification({
-        title: "Assistant Error",
-        body: "Failed to run claude command",
-      }).show();
-    });
-
-    child.on("close", (code) => {
-      claudeProcess = null;
-      try {
-        const result = JSON.parse(stdout);
-        if (result.session_id && result.session_id !== claudeSessionId) {
-          claudeSessionId = result.session_id;
-          console.log(`[Assistant] session=${claudeSessionId} exit=${code}`);
-        } else {
-          console.log(`[Assistant] exit=${code}`);
-        }
-      } catch (_) {
-        console.log(`[Assistant] exit=${code}`);
-      }
-    });
-  });
-
-  if (registered) {
-    console.log(`✓ Assistant shortcut registered: ${shortcut}`);
-  } else {
-    console.error(`✗ Failed to register shortcut: ${shortcut}`);
-  }
-}
-
-// =============================================================================
-// Claude Session Init
-// =============================================================================
-
-function initClaudeSession() {
-  const initPrompt = `Session initialized. recorder_port: ${API_PORT}`;
-  const args = ["-p", initPrompt, "--model", "haiku", "--max-turns", "1", "--output-format", "json"];
-
-  console.log(`[ClaudeSession] Creating session (haiku handshake)...`);
-
-  return new Promise((resolve) => {
-    let stdout = "";
-    let stderr = "";
-    const child = spawn("claude", args, {
-      cwd: PROJECT_ROOT,
-      stdio: ["inherit", "pipe", "pipe"],
-      shell: false,
-    });
-
-    child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
-    child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
-
-    child.on("error", (err) => {
-      resolve({ success: false, error: err.message, stdout, stderr });
-    });
-
-    child.on("close", (code) => {
-      if (code !== 0) {
-        resolve({ success: false, code, stdout, stderr });
-        return;
-      }
-      try {
-        const result = JSON.parse(stdout);
-        if (result.session_id) {
-          claudeSessionId = result.session_id;
-          console.log(`✓ Claude session created: ${claudeSessionId}`);
-          resolve({ success: true });
-        } else {
-          resolve({ success: false, code, stdout, stderr, error: "No session_id in response" });
-        }
-      } catch (e) {
-        resolve({ success: false, code, stdout, stderr, error: e.message });
-      }
-    });
-  });
-}
-
-async function initClaudeSessionWithRetry() {
-  while (true) {
-    const result = await initClaudeSession();
-
-    if (result.success) {
-      // If recording was previously stopped due to session failure, restart it
-      if (lastRecordingChannels && !recordingState.active) {
-        console.log("[ClaudeSession] Restarting recording after successful retry...");
-        try {
-          await startRecording(lastRecordingChannels, lastRecordingIndexingConfig);
-        } catch (e) {
-          console.error("[ClaudeSession] Failed to restart recording:", e.message);
-        }
-      }
-      return;
-    }
-
-    // Build error details
-    const errorOutput = result.stderr || result.stdout || result.error || "Unknown error";
-    const exitCode = result.code != null ? result.code : "N/A";
-
-    // Log full details to hook log
-    hookLog(
-      `[ClaudeSession] FAILED (exit ${exitCode}) ` +
-      `stdout: ${result.stdout || "(empty)"} ` +
-      `stderr: ${result.stderr || "(empty)"} ` +
-      `error: ${result.error || "(none)"}`
-    );
-
-    // Stop recording if it was active
-    if (recordingState.active) {
-      console.log("[ClaudeSession] Stopping active recording due to session failure...");
-      await stopRecording();
-    }
-
-    // Show error overlay and block until user clicks Retry
-    await overlayManager.showClaudeError(
-      `Exit code: ${exitCode}\n\n${errorOutput}`
-    );
-
-    console.log("[ClaudeSession] User requested retry...");
-  }
-}
-
-// =============================================================================
-// App Lifecycle
-// =============================================================================
-
-app.whenReady().then(async () => {
-  try {
-    // Hide dock icon (menu bar app)
-    if (process.platform === "darwin") {
-      app.dock.hide();
-    }
-    // Initialize managers
-    pickerManager = new PickerManager({ uiDir: UI_DIR });
-    overlayManager = new OverlayManager(recordingState, {
-      assistantShortcut: config.assistant_shortcut,
-      uiDir: UI_DIR,
-    });
-    trayManager = new TrayManager(recordingState, {
-      overlay: overlayManager,
-      ctxBuffer: contextBuffer,
-      onStartRecording: () => handleStartRecord({}),
-      onStopRecording: () => handleStopRecord(),
-    });
-    trayManager.create();
-
-    // IPC: serve context data to overlay
-    ipcMain.handle("get-context", (_, type) => {
-      if (type === "all") return contextBuffer.getAll();
-      return { [type]: contextBuffer.getRecent(type, 50) };
-    });
-
-    // IPC: model selection from overlay dropdown
-    ipcMain.on("model-change", (_, model) => {
-      if (["haiku", "sonnet", "opus"].includes(model)) {
-        runtimeModel = model;
-        console.log(`[Model] Switched to: ${runtimeModel}`);
-        overlayManager.pushModelConfig(runtimeModel);
-      }
-    });
-
-    console.log("Starting VideoDB Recorder...");
-    console.log("Config:", {
-      apiKey: API_KEY ? `${API_KEY.substring(0, 10)}...` : "NOT SET",
-      baseUrl: BASE_URL,
-      apiPort: API_PORT,
-    });
-
-    // ── Phase 1: Local infrastructure (no external deps, fast) ──
-    startAPIServer();
-    startHookSocket();
-
-    // ── Phase 2: Parallel — VideoDB connection + Claude session ──
-    const connectedPromise = initializeVideoDB();
-    await initClaudeSessionWithRetry();
-    overlayManager.showReady();
-    overlayManager.pushModelConfig(runtimeModel);
-    const connected = await connectedPromise;
-    if (!connected) {
-      new Notification({
-        title: "VideoDB Recorder",
-        body: "Failed to connect. Run /pair-programmer:setup to set up.",
-      }).show();
-    }
-
-    // ── Phase 3: Capture session + WebSocket (needs VideoDB connection) ──
-    if (connected) {
-      try {
-        await createSession();
-        console.log("✓ Session pre-created with WebSocket for events");
-      } catch (e) {
-        console.warn("Pre-session creation failed:", e.message);
-      }
-    }
-
-    // ── Phase 4: Permissions (needs captureClient from createSession) ──
-    await checkAndRequestPermissions();
-
-    trayManager.markStartupComplete();
-    registerAssistantShortcut();
-
-  } catch (error) {
-    console.error("Startup error:", error);
-    new Notification({
-      title: "VideoDB Recorder Error",
-      body: error.message,
+      body: err.message || "Recording failed",
     }).show();
   }
-});
+}
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
-});
+// =============================================================================
+// Lifecycle
+// =============================================================================
 
-let shutdownPromise = null;
-
-function withTimeout(promise, ms) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms)),
-  ]);
+async function stopAndExit() {
+  console.log("[Stop] Stopping recording...");
+  
+  if (captureClient) {
+    try {
+      await captureClient.stopSession();
+      console.log("[Stop] Capture session stopped");
+    } catch (e) {
+      console.error("[Stop] Error stopping session:", e.message);
+    }
+  }
+  
+  // Wait a bit for export event before exiting
+  setTimeout(() => {
+    exitGracefully("Recording stopped");
+  }, 2000);
 }
 
 async function shutdownApp() {
   console.log("[Shutdown] Starting cleanup...");
-
-  killClaudeProcess("app shutdown");
-  try { globalShortcut.unregisterAll(); } catch (_) {}
-  try { if (trayManager) trayManager.destroy(); } catch (_) {}
-  try { if (overlayManager) overlayManager.destroy(); } catch (_) {}
-
-  if (hookSocketServer) {
-    try { hookSocketServer.close(); } catch (_) {}
-    try { fs.unlinkSync(HOOK_SOCKET_PATH); } catch (_) {}
-    hookSocketServer = null;
-    console.log("[Shutdown] Hook socket closed");
+  
+  if (widgetWindow) {
+    try { widgetWindow.close(); } catch (_) {}
+    widgetWindow = null;
   }
-
-  if (apiHttpServer) {
-    try {
-      await withTimeout(
-        new Promise((resolve) => apiHttpServer.close(() => resolve())),
-        2000
-      );
-      apiHttpServer.unref();
-      apiHttpServer = null;
-      console.log("[Shutdown] API server closed");
-    } catch (_) {}
+  
+  if (tray) {
+    try { tray.destroy(); } catch (_) {}
+    tray = null;
   }
 
   if (captureClient) {
     try {
-      await withTimeout(captureClient.stopSession(), 3000);
-      console.log("[Shutdown] Capture session stopped");
-    } catch (_) {}
-    try {
-      await withTimeout(captureClient.shutdown(), 3000);
-      console.log("[Shutdown] CaptureClient shutdown complete");
+      await captureClient.shutdown();
+      console.log("[Shutdown] CaptureClient shutdown");
     } catch (_) {}
     captureClient = null;
   }
 
   if (wsConnection) {
-    try { await withTimeout(wsConnection.close(), 2000); } catch (_) {}
+    try { await wsConnection.close(); } catch (_) {}
     wsConnection = null;
     console.log("[Shutdown] WebSocket closed");
   }
 
-  contextBuffer.cleanup();
+  removePidFile();
   console.log("[Shutdown] Cleanup complete");
 }
+
+let shutdownPromise = null;
 
 function exitGracefully(source) {
   console.log(`[Shutdown] ${source}`);
 
-  // All callers share the same shutdown promise — second caller waits for the
-  // first cleanup to finish instead of resolving immediately and calling exit.
   if (!shutdownPromise) {
     const forceExit = setTimeout(() => {
       console.error("[Shutdown] Force exit (timeout)");
@@ -1202,6 +615,104 @@ function exitGracefully(source) {
     .catch(() => process.exit(1));
 }
 
+// =============================================================================
+// Main Entry Point
+// =============================================================================
+
+app.whenReady().then(async () => {
+  try {
+    // Hide dock icon (menu bar app)
+    if (process.platform === "darwin") {
+      app.dock.hide();
+    }
+
+    // Step 1: Write PID file
+    writePidFile();
+    
+    // Step 2: Create tray and show widget in starting state
+    createTray();
+    createWidget();
+    
+    console.log("Starting VideoDB Pair Programmer...");
+    console.log("Config:", {
+      apiKey: API_KEY ? `${API_KEY.substring(0, 10)}...` : "NOT SET",
+      baseUrl: BASE_URL,
+    });
+
+    if (!API_KEY) {
+      new Notification({
+        title: "VideoDB Pair Programmer",
+        body: "VIDEO_DB_API_KEY not found in .env file. Run /pair-programmer setup first.",
+      }).show();
+      setTimeout(() => exitGracefully("No API key"), 3000);
+      return;
+    }
+
+    // Step 3: Connect to VideoDB
+    await initializeVideoDB();
+    
+    // Step 4: Setup WebSocket
+    await setupWebSocket();
+    
+    // Step 5: Create capture session
+    await createSession();
+    
+    // Step 6: Request permissions
+    await requestPermissions();
+    
+    // Step 7: List channels and show picker
+    const availableChannels = await captureClient.listChannels();
+    console.log("Available channels:", JSON.stringify(availableChannels, null, 2));
+    
+    // Extract video channels - handle different API response structures
+    let videoChannels = [];
+    if (availableChannels.displays) {
+      if (typeof availableChannels.displays.all === "function") {
+        videoChannels = availableChannels.displays.all();
+      } else if (Array.isArray(availableChannels.displays)) {
+        videoChannels = availableChannels.displays;
+      }
+    } else if (availableChannels.video) {
+      videoChannels = Array.isArray(availableChannels.video) ? availableChannels.video : [];
+    }
+    
+    console.log("Showing picker UI...");
+    const pickerResult = await showPicker(videoChannels);
+    
+    if (!pickerResult) {
+      console.log("Picker cancelled");
+      exitGracefully("Picker cancelled");
+      return;
+    }
+    
+    // Step 8: Build channels from picker result
+    const channels = buildChannelsFromPicker(pickerResult);
+    
+    // Step 9: Clear events file and start recording
+    clearEventsFile();
+    await startRecording(channels);
+    
+    // Step 10: Update widget with channel status
+    lastPickerConfig = pickerResult;
+    updateWidgetConfig(pickerResult);
+    updateTrayMenu();
+    
+    console.log("✓ Recording started! Events logged to:", EVENTS_FILE);
+    
+  } catch (error) {
+    console.error("Startup error:", error);
+    new Notification({
+      title: "VideoDB Recorder Error",
+      body: error.message,
+    }).show();
+    setTimeout(() => exitGracefully("Startup error"), 3000);
+  }
+});
+
+app.on("window-all-closed", () => {
+  // Don't quit - we're a tray app
+});
+
 app.on("before-quit", (e) => {
   e.preventDefault();
   exitGracefully("before-quit");
@@ -1209,15 +720,3 @@ app.on("before-quit", (e) => {
 
 process.on("SIGINT", () => exitGracefully("Received SIGINT"));
 process.on("SIGTERM", () => exitGracefully("Received SIGTERM"));
-
-// =============================================================================
-// Exports
-// =============================================================================
-
-module.exports = {
-  contextBuffer,
-  recordingState,
-  startRecording,
-  stopRecording,
-  get overlayManager() { return overlayManager; },
-};

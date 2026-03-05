@@ -1,254 +1,67 @@
 ---
 name: pair-programmer
-description: AI pair programming with real-time screen and audio context. Use when the user wants to record their screen, check recording status, get context from what they're doing, or control the VideoDB recorder.
+description: AI pair programming with real-time screen and audio context. Use when the user wants to record their screen, start/stop recording, or get context from what they're doing.
 ---
 
-# VideoDB Pair Programmer – HTTP API
+# VideoDB Pair Programmer
 
-AI pair programming with real-time screen and audio context. Control everything via the **recorder HTTP API**. Port is in `~/.config/videodb/config.json` as `recorder_port` (default **8899**).
+AI pair programming with real-time screen and audio context. Record your screen and audio, with AI-powered indexing that logs visual and audio events in real-time.
 
-**Base URL:** `http://127.0.0.1:PORT`
+## Commands
 
----
+When user asks for a command, read the corresponding file for instructions:
 
-## On Session Start
+| Command | Description | Reference |
+|---------|-------------|-----------|
+| `/pair-programmer record` | Start screen/audio recording | See [commands/record.md](commands/record.md) |
+| `/pair-programmer setup` | Install deps and configure API key | See [commands/setup.md](commands/setup.md) |
 
-When a new session starts and the user hasn't requested anything specific, run `/pair-programmer:setup` to verify setup and start the recorder if needed.
+## Agents
 
----
+| Agent | Description | Reference |
+|-------|-------------|-----------|
+| code-eye | Visual context analyzer | See [agents/code-eye.md](agents/code-eye.md) |
 
-## Lifecycle
+## How It Works
 
-- **Session Start:** If config is complete, starts the recorder; if deps missing, prompts to run `/pair-programmer:setup`.
-- **Session End:** Stops the recorder app.
-- **After `/pair-programmer:setup`:** Installs deps via `setup-recorder.sh`, then user restarts Claude to start the app.
+1. User runs `/pair-programmer setup` to install dependencies and set `VIDEO_DB_API_KEY` in their `.env` file
+2. User runs `/pair-programmer record` to start recording
+3. A picker UI appears to select screen and audio sources
+4. Recording starts and events are logged to `/tmp/videodb_pp_events.jsonl`
+5. User can stop recording from the tray icon (🔴 PP → Stop Recording)
 
----
+## Output Files
 
-## Commands (slash commands)
+| Path | Content |
+|------|---------|
+| `/tmp/videodb_pp_pid` | Process ID of the recorder |
+| `/tmp/videodb_pp_events.jsonl` | All WebSocket events (JSONL format) |
+| `/tmp/videodb_pp_info.json` | Current session info (session_id, rtstream_ids) |
 
-| Command | What it does |
-|---------|-------------|
-| `/pair-programmer:record` | Start or stop recording |
-| `/pair-programmer:record-status` | Show recording status |
-| `/pair-programmer:refresh-context` | Fetch and summarize all context |
-| `/pair-programmer:what-happened` | Summarize recent activity timeline |
-| `/pair-programmer:setup` | Initial setup: API key, install dependencies |
-| `/pair-programmer:config` | Change settings (API key, ports, indexing, etc.) |
-| `/pair-programmer:cortex` | Shortcut-triggered: analyze context, respond via overlay |
+## Event File Format
 
----
+Events are written as JSONL (one JSON object per line):
 
-## HTTP API Reference
-
-All POST requests require `Content-Type: application/json`. Replace `PORT` with the value from config (default `8899`).
-
----
-
-### GET `/api/status` — Recording status
-
-Returns current recording state, session ID, duration, buffer counts, and active rtstreams.
-
-```bash
-curl -s http://127.0.0.1:PORT/api/status
-```
-
-**Response:**
 ```json
-{
-  "status": "ok",
-  "recording": true,
-  "sessionId": "cs-abc123",
-  "duration": 45,
-  "bufferCounts": { "screen": 12, "mic": 8, "system_audio": 5 },
-  "rtstreams": [
-    { "rtstream_id": "rt-xxx", "name": "display", "scene_index_id": "si-yyy", "index_type": "screen" },
-    { "rtstream_id": "rt-zzz", "name": "mic", "scene_index_id": "si-www", "index_type": "mic" }
-  ]
-}
+{"ts": "2026-03-05T10:15:30.123Z", "unix_ts": 1709374530.12, "channel": "visual_index", "data": {"text": "User is viewing VS Code with auth.ts open"}}
+{"ts": "2026-03-05T10:15:31.456Z", "unix_ts": 1709374531.45, "channel": "transcript", "data": {"text": "Let me check the login flow", "is_final": true}}
 ```
 
-**Use `rtstreams`** to:
-- Search indexed content → pass `rtstream_id` to `POST /api/rtstream/search`
-- Update indexing prompt → pass `rtstream_id` + `scene_index_id` to `POST /api/rtstream/update-prompt`
+## Environment Configuration
 
----
-
-### POST `/api/record/start` — Start recording
-
-Opens the screen picker UI and begins recording. Optionally override indexing config for this session.
+The recorder reads from `.env` in the user's project directory:
 
 ```bash
-# Basic start (opens picker)
-curl -s -X POST http://127.0.0.1:PORT/api/record/start \
-  -H "Content-Type: application/json" -d '{}'
-
-# Start with custom indexing prompt
-curl -s -X POST http://127.0.0.1:PORT/api/record/start \
-  -H "Content-Type: application/json" \
-  -d '{"indexing_config":{"visual":{"prompt":"Focus on code and error messages"}}}'
+VIDEO_DB_API_KEY=sk-xxx
+VIDEO_DB_BASE_URL=https://api.videodb.io  # optional
 ```
 
-**Body (optional):**
-```json
-{
-  "indexing_config": {
-    "visual": { "prompt": "...", "batch_time": 2, "frame_count": 3 },
-    "mic": { "enabled": true, "prompt": "..." },
-    "system_audio": { "enabled": true, "prompt": "..." }
-  }
-}
-```
-Only include fields you want to override; others use config defaults.
+## Reading Context
 
-**Response:** `{ "status": "ok", "sessionId": "cs-abc123" }` or `{ "status": "error", "error": "Already recording" }`
-
----
-
-### POST `/api/record/stop` — Stop recording
+To get recent context from a recording session, read the events file:
 
 ```bash
-curl -s -X POST http://127.0.0.1:PORT/api/record/stop \
-  -H "Content-Type: application/json"
+tail -20 /tmp/videodb_pp_events.jsonl
 ```
 
-**Response:** `{ "status": "ok", "duration": 120 }` (seconds)
-
----
-
-### GET `/api/context/:type` — Get captured context
-
-Returns the last N items from the context buffer. Type is `screen`, `mic`, `system_audio`, or `all`.
-
-```bash
-# All context (screen + mic + system audio combined)
-curl -s http://127.0.0.1:PORT/api/context/all
-
-# Screen context only
-curl -s http://127.0.0.1:PORT/api/context/screen
-
-# Mic context only
-curl -s http://127.0.0.1:PORT/api/context/mic
-
-# System audio context only
-curl -s http://127.0.0.1:PORT/api/context/system_audio
-```
-
-**Response for `/api/context/all`:**
-```json
-{
-  "status": "ok",
-  "screen": [{ "timestamp": "2025-01-15T10:00:00Z", "text": "User has VS Code open with auth.ts" }],
-  "mic": [{ "timestamp": "2025-01-15T10:00:05Z", "text": "I need to fix the login flow" }],
-  "system_audio": [{ "timestamp": "2025-01-15T10:00:10Z", "text": "Video tutorial explaining OAuth2" }]
-}
-```
-
-Each array is a FIFO buffer (oldest first). Buffer size is configurable in config.
-
----
-
-### POST `/api/rtstream/search` — Semantic search across indexed content
-
-Search past content within a specific rtstream. Get `rtstream_id` from `GET /api/status`.
-
-```bash
-curl -s -X POST http://127.0.0.1:PORT/api/rtstream/search \
-  -H "Content-Type: application/json" \
-  -d '{"rtstream_id":"rt-xxx","query":"error message stack trace"}'
-```
-
-**Body:** `{ "rtstream_id": "<from status>", "query": "keyword-rich search" }`
-
-Use keyword-rich queries. Try multiple queries with different terms if the first doesn't return useful results (e.g. "error", "stack trace", "exception", "failed").
-
----
-
-### POST `/api/rtstream/update-prompt` — Change what the indexing model focuses on
-
-Update the AI prompt used for indexing a stream. Persists to config. Get `rtstream_id` and `scene_index_id` from `GET /api/status`.
-
-```bash
-curl -s -X POST http://127.0.0.1:PORT/api/rtstream/update-prompt \
-  -H "Content-Type: application/json" \
-  -d '{"rtstream_id":"rt-xxx","scene_index_id":"si-yyy","prompt":"Focus on error messages and stack traces"}'
-```
-
-Subsequent indexing batches will use the new prompt. Useful when context descriptions are too vague.
-
----
-
-### POST `/api/overlay/show` — Show overlay message
-
-Display text or a loading spinner in the overlay window.
-
-```bash
-# Show text
-curl -s -X POST http://127.0.0.1:PORT/api/overlay/show \
-  -H "Content-Type: application/json" -d '{"text":"Your message here"}'
-
-# Show loading spinner
-curl -s -X POST http://127.0.0.1:PORT/api/overlay/show \
-  -H "Content-Type: application/json" -d '{"loading":true}'
-```
-
----
-
-### POST `/api/overlay/hide` — Hide overlay
-
-```bash
-curl -s -X POST http://127.0.0.1:PORT/api/overlay/hide \
-  -H "Content-Type: application/json"
-```
-
----
-
-### GET `/api/permissions` — Permission status
-
-```bash
-curl -s http://127.0.0.1:PORT/api/permissions
-```
-
-**Response:** `{ "status": "ok", "message": "Permissions requested at startup via CaptureClient" }`
-
-Permissions (screen recording and microphone) are requested automatically at startup via `CaptureClient.requestPermission`. No manual check needed.
-
----
-
-### GET `/` or `/api` — List all endpoints
-
-Returns available routes with curl examples.
-
-```bash
-curl -s http://127.0.0.1:PORT/
-```
-
----
-
-## First-time setup
-
-Run `/pair-programmer:setup`: set VideoDB API key, install dependencies, then restart Claude to start recorder.
-
----
-
-## Files
-
-```
-pair-programmer/                    # Plugin root
-├── .claude-plugin/
-│   └── plugin.json                 # Plugin manifest
-├── commands/                       # Slash commands
-├── skills/pair-programmer/
-│   ├── SKILL.md                    # This file
-│   ├── package.json                # Electron + videodb deps (self-contained)
-│   ├── recorder-app.js             # Electron app + HTTP API server
-│   └── ui/
-├── hooks/
-│   └── hooks.json                  # SessionStart + SessionEnd hooks
-└── scripts/
-    ├── ensure-recorder.sh          # SessionStart: deps + permissions + start
-    ├── setup-recorder.sh           # Install deps after setup
-    └── cleanup-recorder.sh         # SessionEnd: stop recorder
-```
-
-Config: `~/.config/videodb/config.json` — `recorder_port` (default 8899), `videodb_api_key`, and optional indexing/context settings. Persists across plugin updates.
+Or parse it programmatically to filter by channel (visual_index, transcript, audio_index).
