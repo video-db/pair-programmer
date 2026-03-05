@@ -1,6 +1,0 @@
-{
-  "recorder": {
-    "command": "bash",
-    "args": ["-c", "exec node \"$CLAUDE_PLUGIN_ROOT/scripts/mcp/recorder-mcp.js\""]
-  }
-}
