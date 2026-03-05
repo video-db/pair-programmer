@@ -5,17 +5,15 @@
   <title>Start Recording</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    ::-webkit-scrollbar { display: none; }
-
+    
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
       background: linear-gradient(145deg, #1c1c1e 0%, #2c2c2e 100%);
       color: #fff;
       padding: 24px;
       user-select: none;
       -webkit-app-region: drag;
       min-height: 100vh;
-      border-radius: 18px;
     }
 
     .header {
@@ -28,30 +26,25 @@
     .header-icon {
       width: 40px;
       height: 40px;
-      background: rgba(255, 59, 48, 0.2);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 0.5px solid rgba(255, 59, 48, 0.3);
+      background: linear-gradient(135deg, #ff3b30 0%, #ff6b6b 100%);
       border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 20px;
-      box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.1),
-        0 2px 8px rgba(255, 59, 48, 0.15);
+      box-shadow: 0 4px 12px rgba(255, 59, 48, 0.3);
     }
 
     .header-text h1 {
       font-size: 20px;
       font-weight: 600;
       letter-spacing: -0.3px;
-      color: rgba(255, 255, 255, 0.9);
+      color: #f5f5f7;
     }
 
     .header-text p {
       font-size: 13px;
-      color: rgba(255, 255, 255, 0.4);
+      color: #98989d;
       margin-top: 2px;
     }
 
@@ -62,7 +55,7 @@
     .section-title {
       font-size: 11px;
       font-weight: 600;
-      color: rgba(255, 255, 255, 0.35);
+      color: #98989d;
       text-transform: uppercase;
       letter-spacing: 0.8px;
       margin-bottom: 12px;
@@ -77,25 +70,23 @@
 
     .display-option {
       cursor: pointer;
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      border: 2px solid transparent;
       border-radius: 12px;
       overflow: hidden;
       transition: all 0.2s ease;
-      background: rgba(255, 255, 255, 0.05);
+      background: #2c2c2e;
       position: relative;
     }
 
     .display-option:hover {
-      background: rgba(255, 255, 255, 0.09);
-      border-color: rgba(255, 255, 255, 0.15);
+      background: #3a3a3c;
       transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
     }
 
     .display-option.selected {
-      border-color: rgba(10, 132, 255, 0.5);
-      background: rgba(10, 132, 255, 0.08);
-      box-shadow: 0 0 0 1px rgba(10, 132, 255, 0.3), 0 8px 24px rgba(10, 132, 255, 0.1);
+      border-color: #0a84ff;
+      box-shadow: 0 0 0 1px #0a84ff, 0 8px 24px rgba(10, 132, 255, 0.2);
     }
 
     .display-option.selected::after {
@@ -105,9 +96,7 @@
       right: 8px;
       width: 22px;
       height: 22px;
-      background: rgba(10, 132, 255, 0.8);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
+      background: #0a84ff;
       border-radius: 50%;
       display: flex;
       align-items: center;
@@ -115,13 +104,12 @@
       font-size: 12px;
       font-weight: 600;
       z-index: 10;
-      border: 0.5px solid rgba(10, 132, 255, 0.5);
     }
 
     .display-thumbnail {
       width: 100%;
       aspect-ratio: 16/10;
-      background: rgba(0, 0, 0, 0.2);
+      background: #1c1c1e;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -134,12 +122,10 @@
       height: 100%;
       object-fit: cover;
       transition: transform 0.3s ease;
-      opacity: 0.85;
     }
 
     .display-option:hover .display-thumbnail img {
       transform: scale(1.05);
-      opacity: 1;
     }
 
     .display-thumbnail .placeholder {
@@ -147,7 +133,7 @@
       flex-direction: column;
       align-items: center;
       gap: 6px;
-      color: rgba(255, 255, 255, 0.25);
+      color: #636366;
     }
 
     .placeholder-icon {
@@ -158,7 +144,7 @@
     .placeholder-res {
       font-size: 12px;
       font-weight: 500;
-      color: rgba(255, 255, 255, 0.35);
+      color: #98989d;
     }
 
     .display-info {
@@ -171,18 +157,17 @@
     .display-name {
       font-size: 13px;
       font-weight: 500;
-      color: rgba(255, 255, 255, 0.8);
+      color: #f5f5f7;
     }
 
     .display-res {
       font-size: 11px;
-      color: rgba(255, 255, 255, 0.3);
+      color: #636366;
       font-weight: 500;
     }
 
     .audio-section {
-      background: rgba(255, 255, 255, 0.05);
-      border: 0.5px solid rgba(255, 255, 255, 0.08);
+      background: #2c2c2e;
       border-radius: 12px;
       overflow: hidden;
     }
@@ -198,11 +183,11 @@
     }
 
     .audio-option:hover {
-      background: rgba(255, 255, 255, 0.05);
+      background: #3a3a3c;
     }
 
     .audio-option:not(:last-child) {
-      border-bottom: 0.5px solid rgba(255, 255, 255, 0.06);
+      border-bottom: 1px solid #3a3a3c;
     }
 
     .audio-option input[type="checkbox"] {
@@ -212,20 +197,18 @@
     .checkbox-custom {
       width: 22px;
       height: 22px;
-      border: 1.5px solid rgba(255, 255, 255, 0.2);
+      border: 2px solid #636366;
       border-radius: 6px;
       display: flex;
       align-items: center;
       justify-content: center;
       transition: all 0.15s ease;
       flex-shrink: 0;
-      background: rgba(255, 255, 255, 0.04);
     }
 
     .audio-option input:checked + .checkbox-custom {
-      background: rgba(10, 132, 255, 0.7);
-      border-color: rgba(10, 132, 255, 0.8);
-      box-shadow: 0 2px 8px rgba(10, 132, 255, 0.2);
+      background: #0a84ff;
+      border-color: #0a84ff;
     }
 
     .checkbox-custom::after {
@@ -256,12 +239,12 @@
     .audio-label-title {
       font-size: 14px;
       font-weight: 500;
-      color: rgba(255, 255, 255, 0.8);
+      color: #f5f5f7;
     }
 
     .audio-label-desc {
       font-size: 11px;
-      color: rgba(255, 255, 255, 0.3);
+      color: #636366;
       margin-top: 1px;
     }
 
@@ -289,32 +272,22 @@
     }
 
     .btn-cancel {
-      background: rgba(255, 255, 255, 0.08);
-      border: 0.5px solid rgba(255, 255, 255, 0.1);
-      color: rgba(255, 255, 255, 0.7);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
+      background: #3a3a3c;
+      color: #f5f5f7;
     }
 
     .btn-cancel:hover {
-      background: rgba(255, 255, 255, 0.12);
-      border-color: rgba(255, 255, 255, 0.18);
+      background: #48484a;
     }
 
     .btn-start {
-      background: linear-gradient(135deg, rgba(255, 59, 48, 0.7) 0%, rgba(255, 98, 89, 0.7) 100%);
-      border: 0.5px solid rgba(255, 59, 48, 0.4);
+      background: linear-gradient(135deg, #ff3b30 0%, #ff6259 100%);
       color: #fff;
-      box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.15),
-        0 4px 14px rgba(255, 59, 48, 0.25);
+      box-shadow: 0 4px 14px rgba(255, 59, 48, 0.35);
     }
 
     .btn-start:hover {
-      background: linear-gradient(135deg, rgba(255, 59, 48, 0.85) 0%, rgba(255, 98, 89, 0.85) 100%);
-      box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.15),
-        0 6px 20px rgba(255, 59, 48, 0.35);
+      box-shadow: 0 6px 20px rgba(255, 59, 48, 0.45);
       transform: translateY(-1px);
     }
 
@@ -325,14 +298,14 @@
     .loading {
       text-align: center;
       padding: 40px 20px;
-      color: rgba(255, 255, 255, 0.35);
+      color: #98989d;
     }
 
     .loading-spinner {
       width: 32px;
       height: 32px;
-      border: 2px solid rgba(255, 255, 255, 0.08);
-      border-top-color: rgba(10, 132, 255, 0.6);
+      border: 3px solid #3a3a3c;
+      border-top-color: #0a84ff;
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
       margin: 0 auto 12px;

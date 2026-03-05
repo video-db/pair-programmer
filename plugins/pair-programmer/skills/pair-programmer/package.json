@@ -1,17 +1,14 @@
 {
   "name": "pair-programmer",
   "version": "1.0.0",
+  "description": "VideoDB Recorder - Screen recording with real-time indexing and HTTP API",
   "main": "recorder-app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "electron .",
+    "dev": "electron . --enable-logging"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "dependencies": {
-    "dotenv": "^17.3.1",
-    "electron": "^40.7.0",
+    "electron": "^28.0.0",
     "videodb": "^0.2.0"
   }
 }

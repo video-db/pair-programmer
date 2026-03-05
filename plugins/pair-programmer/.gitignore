@@ -4,7 +4,6 @@ package-lock.json
 
 # Config with secrets
 .claude/skills/pair-programmer/config.json
-.env
 
 # Shared context file (runtime)
 .context.json
