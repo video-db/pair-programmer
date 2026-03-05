@@ -11,7 +11,6 @@ Set up the VideoDB Pair Programmer.
 In the skill directory (the directory containing SKILL.md), install these npm packages:
 - `electron`
 - `videodb`
-- `dotenv`
 
 ### 2. Configure API Key
 

@@ -3,20 +3,16 @@
  * VideoDB Pair Programmer - Simplified Recorder
  * 
  * Single sequential script that:
- * 1. Loads .env from user's project directory
- * 2. Connects to VideoDB, starts WebSocket
- * 3. Shows picker UI for channel selection
- * 4. Starts capture recording
- * 5. Logs all events to /tmp/videodb_pp_events.jsonl
- * 6. Shows tray icon with Stop/Quit buttons
+ * 1. Connects to VideoDB, starts WebSocket
+ * 2. Shows picker UI for channel selection
+ * 3. Starts capture recording
+ * 4. Logs all events to /tmp/videodb_pp_events.jsonl
+ * 5. Shows tray icon with Stop/Quit buttons
  */
 
 const path = require("path");
 const fs = require("fs");
 const { app, Notification, BrowserWindow, screen, ipcMain, Tray, Menu, nativeImage } = require("electron");
-
-// Load environment from user's project directory
-require("dotenv").config();
 
 // Reduce Electron memory footprint
 app.commandLine.appendSwitch("disable-gpu");
@@ -334,7 +330,7 @@ function updateWidgetConfig(config) {
 
 async function initializeVideoDB() {
   if (!API_KEY) {
-    throw new Error("VIDEO_DB_API_KEY not found in .env file");
+    throw new Error("VIDEO_DB_API_KEY environment variable not set");
   }
 
   conn = connect({ apiKey: API_KEY, baseUrl: BASE_URL });
@@ -642,7 +638,7 @@ app.whenReady().then(async () => {
     if (!API_KEY) {
       new Notification({
         title: "VideoDB Pair Programmer",
-        body: "VIDEO_DB_API_KEY not found in .env file. Run /pair-programmer setup first.",
+        body: "VIDEO_DB_API_KEY environment variable not set. Run /pair-programmer setup first.",
       }).show();
       setTimeout(() => exitGracefully("No API key"), 3000);
       return;

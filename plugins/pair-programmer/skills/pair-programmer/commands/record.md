@@ -19,7 +19,6 @@ Start the VideoDB Pair Programmer recorder.
 Run inline Node.js to verify the API key and connection:
 
 ```javascript
-require("dotenv").config();
 const { connect } = require("videodb");
 
 const apiKey = process.env.VIDEO_DB_API_KEY;
@@ -42,7 +41,7 @@ console.log("Connected to VideoDB, collection:", coll.id);
 Run the Electron app as a background process from the skill directory:
 
 ```bash
-cd /Users/rohitgarg/videodb/claude-code/plugins/pair-programmer/skills/pair-programmer && nohup npx electron recorder-app.js > /tmp/videodb_pp_logs 2>&1 &
+nohup npx electron recorder-app.js > /tmp/videodb_pp_logs 2>&1 &
 ```
 
 ### 4. Confirm

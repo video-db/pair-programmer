@@ -24,7 +24,7 @@ When user asks for a command, read the corresponding file for instructions:
 
 ## How It Works
 
-1. User runs `/pair-programmer setup` to install dependencies and set `VIDEO_DB_API_KEY` in their `.env` file
+1. User runs `/pair-programmer setup` to install dependencies and set `VIDEO_DB_API_KEY` environment variable
 2. User runs `/pair-programmer record` to start recording
 3. A picker UI appears to select screen and audio sources
 4. Recording starts and events are logged to `/tmp/videodb_pp_events.jsonl`
@@ -47,14 +47,14 @@ Events are written as JSONL (one JSON object per line):
 {"ts": "2026-03-05T10:15:31.456Z", "unix_ts": 1709374531.45, "channel": "transcript", "data": {"text": "Let me check the login flow", "is_final": true}}
 ```
 
-## Environment Configuration
+## Environment Variables
 
-The recorder reads from `.env` in the user's project directory:
+The recorder reads these from environment variables:
 
-```bash
-VIDEO_DB_API_KEY=sk-xxx
-VIDEO_DB_BASE_URL=https://api.videodb.io  # optional
-```
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `VIDEO_DB_API_KEY` | Yes | VideoDB API key |
+| `VIDEO_DB_BASE_URL` | No | API endpoint (default: https://api.videodb.io) |
 
 ## Reading Context
 
