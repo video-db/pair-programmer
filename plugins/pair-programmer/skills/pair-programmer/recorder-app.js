@@ -589,6 +589,9 @@ async function handleCaptureSessionEvent(ev) {
 async function stopAndExit() {
   console.log("[Stop] Stopping recording...");
   
+  // Immediately update widget to show stopping_requested state
+  updateWidgetState({ state: "stopping_requested" });
+  
   if (captureClient) {
     try {
       await captureClient.stopSession();
@@ -715,6 +718,9 @@ app.whenReady().then(async () => {
     } else if (availableChannels.video) {
       videoChannels = Array.isArray(availableChannels.video) ? availableChannels.video : [];
     }
+    
+    // Update widget to ready state - picker is about to be shown
+    updateWidgetState({ state: "ready" });
     
     console.log("Showing picker UI...");
     const pickerResult = await showPicker(videoChannels);
