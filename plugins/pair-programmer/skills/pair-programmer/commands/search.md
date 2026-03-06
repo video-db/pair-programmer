@@ -119,7 +119,7 @@ Spawn 3 subagents in parallel:
    > "Search /tmp/videodb_pp_events.jsonl for transcript events related to 'auth'. Run: `grep '"channel":"transcript"' /tmp/videodb_pp_events.jsonl | grep -i 'auth'`. Also read the last 5 minutes of all transcript events for broader context: `awk -v cutoff=$(($(date +%s) - 300)) 'match($0, /"unix_ts":([0-9.]+)/, a) && a[1] > cutoff' /tmp/videodb_pp_events.jsonl | grep '"channel":"transcript"'`. Return a summary of what the user said about auth, with timestamps."
 
 3. **Remote semantic search subagent:**
-   > "Run semantic search for 'auth discussion' using: `node search-rtstream.js --query='auth discussion' --cwd=CWD_PATH`. Read the JSON output and return a summary of the top results with timestamps and relevance scores."
+   > "Run semantic search for 'auth discussion' using: `node search-rtstream.js --query='auth discussion' --cwd=<PROJECT_ROOT>`. Read the JSON output and return a summary of the top results with timestamps and relevance scores."
 
 **Example: user intent query "what did I ask?"**
 
@@ -152,14 +152,16 @@ Spawn 2-3 subagents in parallel (one per active channel):
 For the remote semantic search subagent or direct remote search, use `search-rtstream.js` from the skill directory:
 
 ```bash
-node search-rtstream.js --query="your search query" --cwd=$(pwd)
+node search-rtstream.js --query="your search query" --cwd=<PROJECT_ROOT>
 ```
 
 To search a specific RTStream (get IDs from `/tmp/videodb_pp_info.json`):
 
 ```bash
-node search-rtstream.js --query="your query" --cwd=$(pwd) --rtstream=rts-xxx
+node search-rtstream.js --query="your query" --cwd=<PROJECT_ROOT> --rtstream=rts-xxx
 ```
+
+> `<PROJECT_ROOT>` is the absolute path to the user's project directory. This is NOT the skill directory — resolve it before running the command.
 
 Output is a JSON array of matches with `text`, `start`, `end`, `rtstream_name`, and `score`.
 

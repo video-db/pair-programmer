@@ -78,7 +78,9 @@ grep -i 'keyword' /tmp/videodb_pp_events.jsonl
 For semantic search across indexed content, use `search-rtstream.js`:
 
 ```bash
-node search-rtstream.js --query="your query" --cwd=$(pwd)
+node search-rtstream.js --query="your query" --cwd=<PROJECT_ROOT>
 ```
+
+> `<PROJECT_ROOT>` is the absolute path to the user's project directory. This is NOT the skill directory — resolve it before running the command.
 
 See [commands/search.md](commands/search.md) for the full search strategy and CLI patterns.
