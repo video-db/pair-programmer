@@ -144,15 +144,22 @@ function clearEventsFile() {
 // Utility Functions (inlined from utils.js)
 // =============================================================================
 
-function matchDisplayToChannel(displayLabel, videoChannels) {
-  if (!displayLabel || !Array.isArray(videoChannels) || videoChannels.length === 0)
-    return null;
+function enrichChannelsWithDisplayInfo(videoChannels) {
+  const electronDisplays = screen.getAllDisplays();
   const normalized = (s) => String(s || "").trim().toLowerCase();
-  const label = normalized(displayLabel);
-  const found = videoChannels.find(
-    (c) => normalized(c.name) === label || normalized(c.extras?.name) === label
-  );
-  return found ? found.id : null;
+
+  return videoChannels.map((ch, index) => {
+    const match = electronDisplays.find(
+      (d) => normalized(d.label) === normalized(ch.name)
+    );
+    return {
+      channelId: ch.id,
+      label: ch.name || `Display ${index + 1}`,
+      width: match ? match.size.width : null,
+      height: match ? match.size.height : null,
+      electronId: match ? match.id : null,
+    };
+  });
 }
 
 function buildChannelsFromPicker(pickerResult) {
@@ -225,17 +232,7 @@ function showPicker(videoChannels = []) {
       return resolve(null);
     }
 
-    const displays = screen.getAllDisplays().map((d) => {
-      const label = d.label || `Display ${d.id}`;
-      const channelId = matchDisplayToChannel(label, videoChannels);
-      return {
-        width: d.size.width,
-        height: d.size.height,
-        id: d.id,
-        label,
-        channelId: channelId || `display:${d.id}`,
-      };
-    });
+    const displays = enrichChannelsWithDisplayInfo(videoChannels);
 
     pickerWindow = new BrowserWindow({
       width: 420,
@@ -493,8 +490,9 @@ async function listenToWebSocketEvents() {
     for await (const ev of wsConnection.receive()) {
       const channel = ev.channel;
 
-      // Append all events to file
-      appendEvent(ev);
+      if (!(channel === "transcript" && ev.data?.is_final === false)) {
+        appendEvent(ev);
+      }
 
       if (channel === "capture_session") {
         await handleCaptureSessionEvent(ev);
