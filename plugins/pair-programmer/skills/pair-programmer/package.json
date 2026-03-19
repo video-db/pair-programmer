@@ -12,6 +12,6 @@
   "dependencies": {
     "dotenv": "^16.6.1",
     "electron": "^40.8.3",
-    "videodb": "^0.2.3"
+    "videodb": "^0.2.2"
   }
 }
