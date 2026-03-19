@@ -19,6 +19,10 @@
         "email": "support@videodb.io"
       },
       "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/pair-programmer"
+      ],
       "category": "development",
       "keywords": ["recording", "screen-capture", "pair-programming", "videodb", "context"]
     }
