@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.3
+
+- Add `/pair-programmer act` command — find a spoken instruction from the mic transcript and execute it
+- Rewrite README: merge Install + Setup + Quick start into a single Quickstart flow
+- Use `npx skills add` as primary install method, move marketplace install to bottom
+- Add agent-neutral note about command prefixes (`/` for Claude Code, `$` for Codex, etc.)
+- Rename marketplace to `videodb` to avoid `pair-programmer:pair-programmer` double namespace
+- Use `strict: false` with explicit skills reference in marketplace.json
+- Remove standalone plugin.json (marketplace.json is the full definition)
+
 ## 0.2.2
 
 - Flatten directory structure for better skills.sh discovery (Phase 2 vs Phase 3 fallback)

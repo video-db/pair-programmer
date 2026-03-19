@@ -59,78 +59,70 @@ https://github.com/user-attachments/assets/65af0b7e-3af9-4d05-9f0a-1415b19b4e9a
 
 ---
 
-## Install
+## Quickstart
+
+### 1. Install
 
 If you have an older version installed, remove it first before upgrading.
-
-### Option 1: Install with npx
 
 ```bash
 npx skills add video-db/pair-programmer
 ```
 
-### Option 2: Install from marketplace
+### 2. Setup
 
-```bash
-/plugin marketplace add video-db/pair-programmer
-/plugin install pair-programmer@pair-programmer
-```
-
----
-
-## Setup
-
-Get a free VideoDB API key from [console.videodb.io](https://console.videodb.io)  
-No credit card required.
-
-Set your API key:
+Get a free VideoDB API key from [console.videodb.io](https://console.videodb.io) (no credit card required) and set it:
 
 ```bash
 export VIDEO_DB_API_KEY=your-key
 ```
 
-Or add it to a `.env` file in your project root
+Or add it to a `.env` file in your project root.
 
-Then run:
+> **Note:** All commands below (starting with `/`) are run inside your AI coding agent — Claude Code, Cursor, Codex, etc.
+> The command prefix may vary by agent. For example, Codex uses `$` instead of `/`.
 
-```bash
+Then run setup inside your agent:
+
+```
 /pair-programmer setup
 ```
 
+### 3. Use
 
-## Quick start
+**🎬 Record** — start capturing your screen, mic, and system audio:
 
-Start recording your screen, mic, and system audio:
-
-```bash
+```
 /pair-programmer record
 ```
 
-A source picker will open so you can choose what to capture.   Once recording starts, a lightweight overlay shows recording status, active channels, and elapsed time.
+A source picker will open so you can choose what to capture. Once recording starts, a lightweight overlay shows recording status, active channels, and elapsed time.
 
-Search your session in natural language:
+**🔍 Search** — query your session in natural language:
 
-```bash
+```
 /pair-programmer search "what was I working on when I mentioned the auth bug?"
 ```
 
-```bash
+```
 /pair-programmer search "what did I say in the last 5 minutes?"
 ```
 
-```bash
-/pair-programmer search "show me what was on screen when the test failed"
+**🎤 Act** — spoke an instruction into your mic? Let your agent act on it:
+
+```
+/pair-programmer act
 ```
 
-Get a summary of recent activity:
+**📋 Summary** — get a recap of recent activity:
 
-```bash
+```
 /pair-programmer what-happened
 ```
 
-Stop recording when you're done:
+**⏹️ Stop** — stop recording when you're done:
 
-```bash
+```
 /pair-programmer stop
 ```
 
@@ -157,11 +149,14 @@ Use it for:
 
 ## Commands
 
+> The `/` prefix shown below is for Claude Code. Other agents may use a different prefix (e.g. `$` for Codex).
+
 | Command | Description |
 |---------|-------------|
 | `/pair-programmer record` | Start recording and open the source picker |
 | `/pair-programmer stop` | Stop the active recording |
 | `/pair-programmer search "<query>"` | Search screen, mic, and audio context using natural language |
+| `/pair-programmer act` | Act on a spoken instruction from the mic — say what you want done, then run this |
 | `/pair-programmer what-happened` | Summarize recent activity |
 | `/pair-programmer setup` | Install dependencies and complete local setup |
 | `/pair-programmer config` | Update indexing and recording settings |
@@ -175,6 +170,17 @@ Use it for:
   Windows support is currently in beta
 - **VideoDB API key**  
   Get one at [console.videodb.io](https://console.videodb.io)
+
+---
+
+## Alternative installation
+
+You can also install via the Claude Code plugin marketplace:
+
+```
+/plugin marketplace add video-db/pair-programmer
+/plugin install pair-programmer@videodb
+```
 
 ---
 

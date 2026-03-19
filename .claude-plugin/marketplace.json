@@ -1,6 +1,6 @@
 {
-  "name": "pair-programmer",
-  "version": "0.2.2",
+  "name": "videodb",
+  "version": "0.2.3",
   "description": "AI pair programmer with real-time screen and audio context, powered by VideoDB Capture SDK",
   "metadata": {
     "description": "AI pair programmer with real-time screen and audio context, powered by VideoDB Capture SDK"
@@ -13,7 +13,7 @@
     {
       "name": "pair-programmer",
       "description": "AI pair programmer with real-time screen and audio context, powered by VideoDB Capture SDK",
-      "version": "0.2.2",
+      "version": "0.2.3",
       "author": {
         "name": "VideoDB",
         "email": "support@videodb.io"

@@ -16,6 +16,7 @@ When user asks for a command, read the corresponding file for instructions:
 | `/pair-programmer record` | Start screen/audio recording | See [commands/record.md](commands/record.md) |
 | `/pair-programmer stop` | Stop the running recording | See [commands/stop.md](commands/stop.md) |
 | `/pair-programmer search` | Search recording context (screen, mic, audio) | See [commands/search.md](commands/search.md) |
+| `/pair-programmer act` | Act on a spoken instruction from the mic | See [commands/act.md](commands/act.md) |
 | `/pair-programmer what-happened` | Summarize recent activity | See [commands/what-happened.md](commands/what-happened.md) |
 | `/pair-programmer setup` | Install deps and configure API key | See [commands/setup.md](commands/setup.md) |
 | `/pair-programmer config` | Change indexing and other settings | See [commands/config.md](commands/config.md) |
