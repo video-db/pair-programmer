@@ -53,24 +53,6 @@ This is the missing perception layer for coding agents.
 
 ---
 
-## What's new in PP 2
-
-PP 2 is a major upgrade.
-
-- **Now an agentic skill**  
-  Not limited to Claude Code anymore
-
-- **Works across tools**  
-  Use it with Claude Code, Cursor, Codex, and other compatible agent environments
-
-- **Install with `npx`**  
-  Faster setup, less friction
-
-- **Cleaner UI**  
-  Improved picker and recording widget for a smoother experience
-
----
-
 ## Demo
 
 https://github.com/user-attachments/assets/65af0b7e-3af9-4d05-9f0a-1415b19b4e9a
