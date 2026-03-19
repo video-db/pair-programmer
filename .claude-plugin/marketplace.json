@@ -1,9 +1,9 @@
 {
-  "name": "claude-code",
-  "version": "1.0.0",
-  "description": "Claude Code plugin marketplace",
+  "name": "pair-programmer",
+  "version": "0.2.2",
+  "description": "AI pair programmer with real-time screen and audio context, powered by VideoDB Capture SDK",
   "metadata": {
-    "description": "Marketplace for Claude Code plugins"
+    "description": "AI pair programmer with real-time screen and audio context, powered by VideoDB Capture SDK"
   },
   "owner": {
     "name": "VideoDB",
@@ -13,12 +13,12 @@
     {
       "name": "pair-programmer",
       "description": "AI pair programmer with real-time screen and audio context, powered by VideoDB Capture SDK",
-      "version": "1.0.0",
+      "version": "0.2.2",
       "author": {
         "name": "VideoDB",
         "email": "support@videodb.io"
       },
-      "source": "./plugins/pair-programmer",
+      "source": "./",
       "category": "development",
       "keywords": ["recording", "screen-capture", "pair-programming", "videodb", "context"]
     }
