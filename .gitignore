@@ -1,1 +1,23 @@
+# Config with secrets
 .env
+
+# Dependencies
+node_modules/
+package-lock.json
+
+# Shared context file (runtime)
+.context.json
+
+# OS
+.DS_Store
+
+# Electron
+dist/
+out/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Binary
+videodb-recorder
