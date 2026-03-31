@@ -443,7 +443,7 @@
           placeholder.className = 'placeholder';
           placeholder.innerHTML = `
             <span class="placeholder-icon">🖥</span>
-            <span class="placeholder-res">${display.width} × ${display.height}</span>
+            ${display.width && display.height ? `<span class="placeholder-res">${display.width} × ${display.height}</span>` : ''}
           `;
           thumbDiv.appendChild(placeholder);
         }
@@ -452,7 +452,7 @@
         infoDiv.className = 'display-info';
         infoDiv.innerHTML = `
           <span class="display-name">${display.label || 'Display ' + displayNum}</span>
-          <span class="display-res">${display.width}×${display.height}</span>
+          ${display.width && display.height ? `<span class="display-res">${display.width}×${display.height}</span>` : ''}
         `;
 
         div.appendChild(thumbDiv);

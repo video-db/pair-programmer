@@ -149,9 +149,12 @@ function enrichChannelsWithDisplayInfo(videoChannels) {
   const normalized = (s) => String(s || "").trim().toLowerCase();
 
   return videoChannels.map((ch, index) => {
-    const match = electronDisplays.find(
+    let match = electronDisplays.find(
       (d) => normalized(d.label) === normalized(ch.name)
     );
+    if (!match && videoChannels.length === electronDisplays.length) {
+      match = electronDisplays[index];
+    }
     return {
       channelId: ch.id,
       label: ch.name || `Display ${index + 1}`,
