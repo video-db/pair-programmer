@@ -166,8 +166,7 @@ Use it for:
 ## Requirements
 
 - **Node.js 18+**
-- **macOS 12+**  
-  Windows support is currently in beta
+- **macOS 12+ or Windows**
 - **VideoDB API key**  
   Get one at [console.videodb.io](https://console.videodb.io)
 
