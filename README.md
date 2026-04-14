@@ -4,20 +4,18 @@
 [![Website][website-shield]][website-url]
 
 <p align="center">
-  <a href="https://videodb.io/">
-    <img src="https://codaio.imgix.net/docs/_s5lUnUCIU/blobs/bl-RgjcFrrJjj/d3cbc44f8584ecd42f2a97d981a144dce6a66d83ddd5864f723b7808c7d1dfbc25034f2f25e1b2188e78f78f37bcb79d3c34ca937cbb08ca8b3da1526c29da9a897ab38eb39d084fd715028b7cc60eb595c68ecfa6fa0bb125ec2b09da65664a4f172c2f" alt="VideoDB" width="300" />
-  </a>
+  <img src="Pair Programmer logo.png" alt="Pair Programmer" width="300" />
 </p>
 
 <h1 align="center">Pair Programmer</h1>
 
 <p align="center">
-  Turn your coding agent into a screen aware, voice aware, context rich collaborator.
+  Your AI coding assistant that sees your screen and hears your voice — live.
   <br />
-  Record your screen, microphone, and system audio in real time, then search what happened in natural language.
+  No more copy-pasting errors, repeating yourself, or explaining what just happened.
   <br />
-    <br />
-  Works with Claude Code, Cursor, Codex, and other skill compatible agents.
+  <br />
+  Works with Claude Code, Cursor, Codex, and other skill-compatible agents.
 </p>
 
 <p align="center">
@@ -32,24 +30,21 @@
 
 ## What is Pair Programmer?
 
-Pair Programmer is an **agentic skill** that gives your AI coding assistant real time perception.
+Pair Programmer is a **skill** that lets your AI coding assistant see your screen and hear your voice while you work.
 
 It captures:
 
-- **Screen** for visual context like terminals, editors, browser tabs, errors, and UI state
-- **Microphone** for your spoken intent, ideas, and debugging notes
-- **System audio** for tutorials, meetings, demos, and anything else your computer is playing
+- **Your screen** — errors, code, browser tabs, terminals, everything you see
+- **Your voice** — ideas, questions, debugging thoughts, instructions
+- **Your system audio** — YouTube tutorials, meeting calls, demos
 
-Once captured, that context becomes searchable.
+Everything gets saved and becomes searchable. So instead of explaining what happened, just ask:
 
-So instead of re explaining what was on screen, copy pasting logs, or summarizing a 20 minute debugging session, you can ask:
+- *What was on screen when the test failed?*
+- *What did I say about the database issue?*
+- *Summarize the last 10 minutes*
 
-- *What was I doing when the auth flow broke?*
-- *What did I say about the database migration?*
-- *Show me what was on screen when the test failed*
-- *What happened in the last 10 minutes?*
-
-This is the missing perception layer for coding agents.
+It's like giving your AI eyes and ears.
 
 ---
 
@@ -79,7 +74,7 @@ export VIDEO_DB_API_KEY=your-key
 
 Or add it to a `.env` file in your project root.
 
-> **Note:** All commands below (starting with `/`) are run inside your AI coding agent — Claude Code, Cursor, Codex, etc.
+> **Note:** Commands below (starting with `/`) are run inside your AI coding agent — Claude Code, Cursor, Codex, etc.
 > The command prefix may vary by agent. For example, Codex uses `$` instead of `/`.
 
 Then run setup inside your agent:
@@ -90,15 +85,15 @@ Then run setup inside your agent:
 
 ### 3. Use
 
-**🎬 Record** — start capturing your screen, mic, and system audio:
+**🟢 Go Live** — start capturing your screen, mic, and system audio:
 
 ```
 /pair-programmer record
 ```
 
-A source picker will open so you can choose what to capture. Once recording starts, a lightweight overlay shows recording status, active channels, and elapsed time.
+A window will pop up so you can choose what to capture. Once started, a small overlay shows you're live.
 
-**🔍 Search** — query your session in natural language:
+**🔍 Search** — ask questions about what happened:
 
 ```
 /pair-programmer search "what was I working on when I mentioned the auth bug?"
@@ -108,19 +103,19 @@ A source picker will open so you can choose what to capture. Once recording star
 /pair-programmer search "what did I say in the last 5 minutes?"
 ```
 
-**🎤 Act** — spoke an instruction into your mic? Let your agent act on it:
+**🎤 Act** — said something you want done? Let your AI act on it:
 
 ```
 /pair-programmer act
 ```
 
-**📋 Summary** — get a recap of recent activity:
+**📋 Summary** — get a quick recap:
 
 ```
 /pair-programmer what-happened
 ```
 
-**⏹️ Stop** — stop recording when you're done:
+**⏹️ Stop** — stop when you're done:
 
 ```
 /pair-programmer stop
@@ -128,22 +123,26 @@ A source picker will open so you can choose what to capture. Once recording star
 
 ---
 
-## Why this is useful
+## Why use this?
 
-Most coding agents can write code.
+Ever had to explain the same thing twice to your AI? Or copy-paste an error message it could have just seen? Pair Programmer fixes that.
 
-Very few can stay grounded in the same context as you.
+**Watch a YouTube tutorial together** — your AI follows along without you explaining anything.
 
-Pair Programmer helps your agent stay on the same page by giving it access to what you saw, what you said, and what your machine was playing. That means less manual explanation, fewer broken handoffs, and a much more natural way to work.
+**Brainstorm out loud** — just talk through your ideas. Your AI hears and remembers everything.
+
+**Debug without repeating yourself** — it already saw the error on your screen.
+
+**Get context from meetings** — had a call about requirements? Your AI was listening.
 
 Use it for:
 
-- debugging sessions
-- tutorial driven development
-- bug reproduction
-- meeting follow ups
-- architecture walkthroughs
-- voice first coding workflows
+- Debugging sessions
+- Following along with tutorials
+- Voice-first coding
+- Meeting follow-ups
+- Bug reproduction
+- Architecture walkthroughs
 
 ---
 
@@ -151,15 +150,15 @@ Use it for:
 
 > The `/` prefix shown below is for Claude Code. Other agents may use a different prefix (e.g. `$` for Codex).
 
-| Command | Description |
-|---------|-------------|
-| `/pair-programmer record` | Start recording and open the source picker |
-| `/pair-programmer stop` | Stop the active recording |
-| `/pair-programmer search "<query>"` | Search screen, mic, and audio context using natural language |
-| `/pair-programmer act` | Act on a spoken instruction from the mic — say what you want done, then run this |
-| `/pair-programmer what-happened` | Summarize recent activity |
-| `/pair-programmer setup` | Install dependencies and complete local setup |
-| `/pair-programmer config` | Update indexing and recording settings |
+| Command | What it does |
+|---------|--------------|
+| `/pair-programmer record` | Go live — start capturing screen, mic, and audio |
+| `/pair-programmer stop` | Stop capturing |
+| `/pair-programmer search "<query>"` | Search what happened using plain English |
+| `/pair-programmer act` | Act on something you said out loud |
+| `/pair-programmer what-happened` | Get a summary of recent activity |
+| `/pair-programmer setup` | Install dependencies and set things up |
+| `/pair-programmer config` | Change settings |
 
 ---
 
@@ -167,8 +166,7 @@ Use it for:
 
 - **Node.js 18+**
 - **macOS 12+ or Windows**
-- **VideoDB API key**  
-  Get one at [console.videodb.io](https://console.videodb.io)
+- **VideoDB API key** — free at [console.videodb.io](https://console.videodb.io)
 
 ---
 
@@ -185,29 +183,20 @@ You can also install via the Claude Code plugin marketplace:
 
 ## Community and support
 
-Pair Programmer is open source and designed to be adapted for your own workflows and agent use cases.
+Pair Programmer is open source. Use it, modify it, make it your own.
 
 - **Issues:** [GitHub Issues](https://github.com/video-db/pair-programmer/issues)
 - **Docs:** [docs.videodb.io](https://docs.videodb.io)
-- **Discord:** [Join community](https://discord.gg/py9P639jGz)
+- **Discord:** [Join the community](https://discord.gg/py9P639jGz)
 
 ---
 
-## About VideoDB
-
-VideoDB is the perception, memory, and action layer for AI agents working with video and audio.
-
-Pair Programmer is one example of what becomes possible when agents can understand continuous media in real time.
-
-Learn more at [videodb.io](https://videodb.io)
 <p align="center">Made with ❤️ by the <a href="https://videodb.io">VideoDB</a> team</p>
 
----
-
 <!-- MARKDOWN LINKS & IMAGES -->
-[stars-shield]: https://img.shields.io/github/stars/video-db/claude-code.svg?style=for-the-badge
-[stars-url]: https://github.com/video-db/claude-code/stargazers
-[issues-shield]: https://img.shields.io/github/issues/video-db/claude-code.svg?style=for-the-badge
-[issues-url]: https://github.com/video-db/claude-code/issues
+[stars-shield]: https://img.shields.io/github/stars/video-db/pair-programmer.svg?style=for-the-badge
+[stars-url]: https://github.com/video-db/pair-programmer/stargazers
+[issues-shield]: https://img.shields.io/github/issues/video-db/pair-programmer.svg?style=for-the-badge
+[issues-url]: https://github.com/video-db/pair-programmer/issues
 [website-shield]: https://img.shields.io/website?url=https%3A%2F%2Fvideodb.io%2F&style=for-the-badge&label=videodb.io
 [website-url]: https://videodb.io/
