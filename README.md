@@ -4,10 +4,8 @@
 [![Website][website-shield]][website-url]
 
 <p align="center">
-  <img src="pair-programmer-logo.png" alt="Pair Programmer" width="300" />
+  <img src="pair-programmer-logo.png" width="1200" height="372" alt="banner" />
 </p>
-
-<h1 align="center">Pair Programmer</h1>
 
 <p align="center">
   Your AI coding assistant that sees your screen and hears your voice — live.
