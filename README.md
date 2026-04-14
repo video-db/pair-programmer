@@ -4,7 +4,7 @@
 [![Website][website-shield]][website-url]
 
 <p align="center">
-  <img src="Pair Programmer logo.png" alt="Pair Programmer" width="300" />
+  <img src="pair-programmer-logo.png" alt="Pair Programmer" width="300" />
 </p>
 
 <h1 align="center">Pair Programmer</h1>
