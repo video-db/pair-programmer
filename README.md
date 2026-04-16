@@ -4,7 +4,7 @@
 [![Website][website-shield]][website-url]
 
 <p align="center">
-  <img src="pair-programmer-logo.png" width="1200" height="372" alt="banner" />
+  <img src="pair-programmer-logo.png" style="max-width: 100%; height: auto;" alt="banner" />
 </p>
 
 <p align="center">
