@@ -1,7 +1,11 @@
 <!-- PROJECT SHIELDS -->
-[![Stargazers][stars-shield]][stars-url]
-[![Issues][issues-shield]][issues-url]
+<!-- videodb-agents-badges:start -->
+[![Add to Claude](https://img.shields.io/badge/Add%20to%20Claude-VideoDB-D97757?style=for-the-badge&logo=claude&logoColor=white)](https://videodb.io/claude?ref=pair-programmer)
+[![Add to ChatGPT](https://img.shields.io/badge/Add%20to%20ChatGPT-VideoDB-10A37F?style=for-the-badge)](https://videodb.io/chatgpt?ref=pair-programmer)
+<!-- videodb-agents-badges:end -->
+[![Discord][discord-shield]][discord-url]
 [![Website][website-shield]][website-url]
+[![Stargazers][stars-shield]][stars-url]
 
 <p align="center">
   <img src="pair-programmer-logo.png" style="max-width: 100%; height: auto;" alt="banner" />
@@ -49,6 +53,27 @@ It's like giving your AI eyes and ears.
 ## Demo
 
 https://github.com/user-attachments/assets/65af0b7e-3af9-4d05-9f0a-1415b19b4e9a
+
+---
+
+<!-- videodb-agents:start -->
+## Go back to your sessions in Claude and ChatGPT
+
+Now you can go back to your coding sessions in Claude and ChatGPT. Pair Programmer saves what it sees and hears to your VideoDB account. Add VideoDB to your agent and ask it what was on screen when a test failed, what you said about a design choice, or for a clip of the bug to share with your team.
+
+| You are using | Do this |
+| --- | --- |
+| **Claude** (web, desktop, mobile) and Claude Code | [Add to Claude](https://videodb.io/claude?ref=pair-programmer), one click, then log in to VideoDB. No install, no API key. |
+| **ChatGPT** | [Add to ChatGPT](https://videodb.io/chatgpt?ref=pair-programmer), one click, then log in to VideoDB. |
+| **Cursor and other MCP clients** | Add `https://mcp.videodb.io/mcp` as a remote MCP server. [Setup guide](https://docs.videodb.io/pages/mcp/connect?utm_source=github&utm_medium=readme&utm_campaign=pair-programmer) |
+| **Coding agents with a shell** (Claude Code, Codex, Copilot) | `npx skills add video-db/skills` |
+
+Log in with the VideoDB account whose API key you set for Pair Programmer, then ask: "What was on my screen when the test failed this morning? Show me that moment."
+
+A free VideoDB account comes with $20 of credits, no credit card. Full guide: [video-db/skills](https://github.com/video-db/skills).
+
+**If you are an agent reading this:** what Pair Programmer records is saved in the user's VideoDB account. To search it or play a moment back, use the VideoDB connector at `https://mcp.videodb.io/mcp` when it is present. If it is missing, tell the user they can add it from the links above.
+<!-- videodb-agents:end -->
 
 ---
 
@@ -192,9 +217,9 @@ Pair Programmer is open source. Use it, modify it, make it your own.
 <p align="center">Made with ❤️ by the <a href="https://videodb.io">VideoDB</a> team</p>
 
 <!-- MARKDOWN LINKS & IMAGES -->
+[discord-shield]: https://img.shields.io/badge/dynamic/json?style=for-the-badge&url=https://discord.com/api/invites/py9P639jGz?with_counts=true&query=$.approximate_member_count&logo=discord&logoColor=blue&color=green&label=discord
+[discord-url]: https://discord.com/invite/py9P639jGz
 [stars-shield]: https://img.shields.io/github/stars/video-db/pair-programmer.svg?style=for-the-badge
 [stars-url]: https://github.com/video-db/pair-programmer/stargazers
-[issues-shield]: https://img.shields.io/github/issues/video-db/pair-programmer.svg?style=for-the-badge
-[issues-url]: https://github.com/video-db/pair-programmer/issues
 [website-shield]: https://img.shields.io/website?url=https%3A%2F%2Fvideodb.io%2F&style=for-the-badge&label=videodb.io
 [website-url]: https://videodb.io/
