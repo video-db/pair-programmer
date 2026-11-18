@@ -3,9 +3,9 @@
 [![Add to Claude](https://img.shields.io/badge/Add%20to%20Claude-VideoDB-D97757?style=for-the-badge&logo=claude&logoColor=white)](https://videodb.io/claude?ref=pair-programmer)
 [![Add to ChatGPT](https://img.shields.io/badge/Add%20to%20ChatGPT-VideoDB-10A37F?style=for-the-badge)](https://videodb.io/chatgpt?ref=pair-programmer)
 <!-- videodb-agents-badges:end -->
-[![Stargazers][stars-shield]][stars-url]
-[![Issues][issues-shield]][issues-url]
+[![Discord][discord-shield]][discord-url]
 [![Website][website-shield]][website-url]
+[![Stargazers][stars-shield]][stars-url]
 
 <p align="center">
   <img src="pair-programmer-logo.png" style="max-width: 100%; height: auto;" alt="banner" />
@@ -217,9 +217,9 @@ Pair Programmer is open source. Use it, modify it, make it your own.
 <p align="center">Made with ❤️ by the <a href="https://videodb.io">VideoDB</a> team</p>
 
 <!-- MARKDOWN LINKS & IMAGES -->
+[discord-shield]: https://img.shields.io/badge/dynamic/json?style=for-the-badge&url=https://discord.com/api/invites/py9P639jGz?with_counts=true&query=$.approximate_member_count&logo=discord&logoColor=blue&color=green&label=discord
+[discord-url]: https://discord.com/invite/py9P639jGz
 [stars-shield]: https://img.shields.io/github/stars/video-db/pair-programmer.svg?style=for-the-badge
 [stars-url]: https://github.com/video-db/pair-programmer/stargazers
-[issues-shield]: https://img.shields.io/github/issues/video-db/pair-programmer.svg?style=for-the-badge
-[issues-url]: https://github.com/video-db/pair-programmer/issues
 [website-shield]: https://img.shields.io/website?url=https%3A%2F%2Fvideodb.io%2F&style=for-the-badge&label=videodb.io
 [website-url]: https://videodb.io/
